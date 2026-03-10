@@ -196,6 +196,7 @@ export interface StepExecutionContext {
   env: NodeJS.ProcessEnv;
   reportMode?: boolean;
   reportContext?: {
+    reportKind?: "chat_followup" | "post_step";
     stepStatus: StepStatus;
     stepError?: string | null;
     artifactTitles?: string[];

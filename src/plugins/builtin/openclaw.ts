@@ -365,10 +365,12 @@ function buildAgentMessage(ctx: StepExecutionContext): string {
 
 function buildReportMessage(ctx: StepExecutionContext): string {
   const urlCandidates = collectResolvedUrlCandidates(ctx);
+  const reportKind = ctx.reportContext?.reportKind ?? "chat_followup";
   const customTemplate = asString(ctx.settings.reportPromptTemplate).trim();
   if (customTemplate) {
     return customTemplate
       .replaceAll("{{goal}}", ctx.goal || "(empty)")
+      .replaceAll("{{reportKind}}", reportKind)
       .replaceAll("{{followupPrompt}}", ctx.reportContext?.followupPrompt?.trim() || "")
       .replaceAll("{{stepStatus}}", ctx.reportContext?.stepStatus || "")
       .replaceAll("{{stepError}}", ctx.reportContext?.stepError || "")
@@ -383,7 +385,14 @@ function buildReportMessage(ctx: StepExecutionContext): string {
   lines.push("You are a helpful assistant in node chat.");
   lines.push("No tool calls, commands, or file edits. Plain text only.");
   lines.push("Do not output code blocks, snippets, diffs, HTML/CSS/JS, or shell commands.");
-  lines.push("Explain in natural language and keep focus on what to do next.");
+  if (reportKind === "post_step") {
+    lines.push("You are writing a post-execution report. The step has already finished.");
+    lines.push("Write only completed outcomes in past tense.");
+    lines.push("Do not write present/future action phrases like 'doing', 'will do', 'now I will'.");
+    lines.push("Start with final outcome and verification result.");
+  } else {
+    lines.push("Explain in natural language and keep focus on what to do next.");
+  }
   lines.push(`Original goal: ${ctx.goal || "(empty)"}`);
   const chatHistory = formatChatHistory(ctx);
   if (chatHistory) {
@@ -413,10 +422,14 @@ function buildReportMessage(ctx: StepExecutionContext): string {
     lines.push(`Log tail:\n${ctx.reportContext.logTail.map((line) => `- ${line}`).join("\n")}`);
   }
   lines.push("Answer directly and naturally like an assistant, not a rigid report.");
-  lines.push("If data is insufficient, ask one concise clarifying question.");
-  lines.push("At the very end add one strict machine-readable line:");
-  lines.push("KOVALSKY_DECISION: rerun or KOVALSKY_DECISION: no_rerun");
-  lines.push("Use rerun only when the user clearly asks to perform edits/actions now.");
+  if (reportKind === "chat_followup") {
+    lines.push("If data is insufficient, ask one concise clarifying question.");
+    lines.push("At the very end add one strict machine-readable line:");
+    lines.push("KOVALSKY_DECISION: rerun or KOVALSKY_DECISION: no_rerun");
+    lines.push("Use rerun only when the user clearly asks to perform edits/actions now.");
+  } else {
+    lines.push("Do not add machine-readable decision lines.");
+  }
   return lines.join("\n");
 }
 

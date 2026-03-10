@@ -818,6 +818,7 @@ export class RunService {
           env: input.env,
           reportMode: true,
           reportContext: {
+            reportKind: "post_step",
             stepStatus: input.status,
             stepError: input.errorSummary ?? undefined,
             artifactTitles: input.artifactTitles,
@@ -942,6 +943,7 @@ export class RunService {
           env: await this.buildAgentEnv(),
           reportMode: true,
           reportContext: {
+            reportKind: "chat_followup",
             stepStatus: stepRun.status,
             stepError: stepRun.error_summary ?? undefined,
             artifactTitles,

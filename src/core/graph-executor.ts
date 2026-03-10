@@ -567,6 +567,7 @@ export class GraphExecutor {
             env: params.env,
             reportMode: true,
             reportContext: {
+              reportKind: "post_step",
               stepStatus: params.status,
               stepError: params.errorSummary ?? undefined,
               artifactTitles: params.artifactTitles,
