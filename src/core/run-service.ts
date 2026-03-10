@@ -347,8 +347,8 @@ export class RunService {
           : `${followup.reply}\n\nНе удалось запустить полный workflow: ${pipelineRerunError ?? "unknown error"}`
         : nodeRerunLaunch === "run_canceled"
           ? startedRunId
-            ? `${followup.reply}\n\nТекущий run уже отменён, поэтому запустил новый прогон workflow: ${startedRunId}`
-            : `${followup.reply}\n\nТекущий run уже отменён, но не удалось запустить новый workflow: ${pipelineRerunError ?? "unknown error"}`
+            ? `Текущий run уже отменён, поэтому запустил новый прогон workflow: ${startedRunId}`
+            : `Текущий run уже отменён, но не удалось запустить новый workflow: ${pipelineRerunError ?? "unknown error"}`
         : nodeRerunLaunch === "already_running"
           ? `${followup.reply}\n\nПовторный прогон этой ноды уже выполняется. Дождись завершения текущего rerun.`
           : `${followup.reply}\n\nЗапускаю повторный прогон этой ноды с учётом твоего сообщения.`
