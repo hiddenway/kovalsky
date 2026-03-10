@@ -125,6 +125,7 @@ class RestKovalskyApiClient implements KovalskyApiClient {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
+        id: pipeline.id,
         name: pipeline.name,
         graph: toGatewayGraph(pipeline),
       }),

@@ -144,9 +144,18 @@ export class DatabaseService {
     return this.db.prepare("SELECT * FROM agents ORDER BY id ASC").all() as Array<{ id: string; version: string; title: string; runner_type: string; manifest_json: string }>;
   }
 
-  createPipeline(name: string, graphJson: string): PipelineRecord {
+  createPipeline(name: string, graphJson: string, pipelineId?: string): PipelineRecord {
+    const id = pipelineId?.trim() || uuidv4();
+    const existing = this.getPipeline(id);
+    if (existing) {
+      const updated = this.updatePipeline(id, name, graphJson);
+      if (updated) {
+        return updated;
+      }
+    }
+
     const record: PipelineRecord = {
-      id: uuidv4(),
+      id,
       name,
       graph_json: graphJson,
       created_at: nowIso(),

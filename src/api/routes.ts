@@ -25,6 +25,7 @@ interface RoutesDeps {
 }
 
 const pipelineSchema = z.object({
+  id: z.string().min(1).optional(),
   name: z.string().min(1),
   graph: z.object({
     nodes: z.array(
@@ -123,7 +124,7 @@ export async function registerRoutes(app: FastifyInstance<any, any, any, any>, d
     }
 
     try {
-      const pipeline = deps.pipelineService.createPipeline(parsed.data.name, parsed.data.graph as PipelineGraph);
+      const pipeline = deps.pipelineService.createPipeline(parsed.data.name, parsed.data.graph as PipelineGraph, parsed.data.id);
       return { pipelineId: pipeline.id };
     } catch (error) {
       return reply.code(400).send({ error: error instanceof Error ? error.message : "Validation error" });

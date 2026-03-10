@@ -25,9 +25,9 @@ export class PipelineService {
     }
   }
 
-  createPipeline(name: string, graph: PipelineGraph): PipelineRecord {
+  createPipeline(name: string, graph: PipelineGraph, pipelineId?: string): PipelineRecord {
     this.validateGraph(graph);
-    return this.db.createPipeline(name, JSON.stringify(graph));
+    return this.db.createPipeline(name, JSON.stringify(graph), pipelineId);
   }
 
   getPipeline(id: string): PipelineRecord | null {

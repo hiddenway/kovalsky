@@ -48,7 +48,7 @@ export class GatewayApi {
     return this.request<AgentSummary[]>("/agents", { method: "GET" });
   }
 
-  createPipeline(input: { name: string; graph: PipelineGraphPayload }): Promise<{ pipelineId: string }> {
+  createPipeline(input: { id?: string; name: string; graph: PipelineGraphPayload }): Promise<{ pipelineId: string }> {
     return this.request<{ pipelineId: string }>("/pipelines", {
       method: "POST",
       body: JSON.stringify(input),
