@@ -21,7 +21,7 @@ function makeDefaultPipeline(): Pipeline {
     description: "",
     tags: [],
     chatRerunMode: "node",
-    preserveNodeChatContextOnRun: true,
+    clearNodeChatContextOnRun: false,
     nodes: [],
     edges: [],
     updatedAt: now,
@@ -50,7 +50,7 @@ type PipelineState = {
   tags: string[];
   workspacePath: string;
   chatRerunMode: "node" | "pipeline";
-  preserveNodeChatContextOnRun: boolean;
+  clearNodeChatContextOnRun: boolean;
   nodes: ReactFlowNode<PipelineNodeData>[];
   edges: ReactFlowEdge[];
   selectedNodeId: string | null;
@@ -67,7 +67,7 @@ type PipelineState = {
     tags?: string[];
     workspacePath?: string;
     chatRerunMode?: "node" | "pipeline";
-    preserveNodeChatContextOnRun?: boolean;
+    clearNodeChatContextOnRun?: boolean;
   }) => void;
   setNodes: (nodes: ReactFlowNode<PipelineNodeData>[]) => void;
   setEdges: (edges: ReactFlowEdge[]) => void;
@@ -98,7 +98,7 @@ export const usePipelineStore = create<PipelineState>((set, get) => ({
   tags: [],
   workspacePath: "",
   chatRerunMode: "node",
-  preserveNodeChatContextOnRun: true,
+  clearNodeChatContextOnRun: false,
   nodes: [],
   edges: [],
   selectedNodeId: null,
@@ -117,7 +117,7 @@ export const usePipelineStore = create<PipelineState>((set, get) => ({
         tags: created.tags ?? [],
         workspacePath: created.workspacePath ?? "",
         chatRerunMode: created.chatRerunMode === "pipeline" ? "pipeline" : "node",
-        preserveNodeChatContextOnRun: created.preserveNodeChatContextOnRun ?? true,
+        clearNodeChatContextOnRun: created.clearNodeChatContextOnRun ?? false,
         nodes: created.nodes,
         edges: created.edges,
       });
@@ -137,7 +137,7 @@ export const usePipelineStore = create<PipelineState>((set, get) => ({
       tags: target.tags ?? [],
       workspacePath: target.workspacePath ?? "",
       chatRerunMode: target.chatRerunMode === "pipeline" ? "pipeline" : "node",
-      preserveNodeChatContextOnRun: target.preserveNodeChatContextOnRun ?? true,
+      clearNodeChatContextOnRun: target.clearNodeChatContextOnRun ?? false,
       nodes: target.nodes,
       edges: target.edges,
       selectedNodeId: null,
@@ -150,7 +150,7 @@ export const usePipelineStore = create<PipelineState>((set, get) => ({
       ...makeDefaultPipeline(),
       workspacePath: workspacePath?.trim() ?? "",
       chatRerunMode: "node",
-      preserveNodeChatContextOnRun: true,
+      clearNodeChatContextOnRun: false,
     };
     const pipelines = [created, ...current.pipelines];
 
@@ -164,7 +164,7 @@ export const usePipelineStore = create<PipelineState>((set, get) => ({
       tags: created.tags ?? [],
       workspacePath: created.workspacePath ?? "",
       chatRerunMode: created.chatRerunMode === "pipeline" ? "pipeline" : "node",
-      preserveNodeChatContextOnRun: created.preserveNodeChatContextOnRun ?? true,
+      clearNodeChatContextOnRun: created.clearNodeChatContextOnRun ?? false,
       nodes: created.nodes,
       edges: created.edges,
       selectedNodeId: null,
@@ -186,7 +186,7 @@ export const usePipelineStore = create<PipelineState>((set, get) => ({
       tags: pipeline.tags ?? [],
       workspacePath: pipeline.workspacePath ?? "",
       chatRerunMode: pipeline.chatRerunMode === "pipeline" ? "pipeline" : "node",
-      preserveNodeChatContextOnRun: pipeline.preserveNodeChatContextOnRun ?? true,
+      clearNodeChatContextOnRun: pipeline.clearNodeChatContextOnRun ?? false,
       nodes: pipeline.nodes,
       edges: pipeline.edges,
       selectedNodeId: null,
@@ -202,7 +202,7 @@ export const usePipelineStore = create<PipelineState>((set, get) => ({
       tags: state.tags,
       workspacePath: state.workspacePath,
       chatRerunMode: state.chatRerunMode,
-      preserveNodeChatContextOnRun: state.preserveNodeChatContextOnRun,
+      clearNodeChatContextOnRun: state.clearNodeChatContextOnRun,
       nodes: state.nodes,
       edges: state.edges,
       updatedAt: new Date().toISOString(),
@@ -222,7 +222,7 @@ export const usePipelineStore = create<PipelineState>((set, get) => ({
       tags: updated.tags ?? [],
       workspacePath: updated.workspacePath ?? "",
       chatRerunMode: updated.chatRerunMode === "pipeline" ? "pipeline" : "node",
-      preserveNodeChatContextOnRun: updated.preserveNodeChatContextOnRun ?? true,
+      clearNodeChatContextOnRun: updated.clearNodeChatContextOnRun ?? false,
       nodes: updated.nodes,
       edges: updated.edges,
     });
@@ -242,7 +242,7 @@ export const usePipelineStore = create<PipelineState>((set, get) => ({
         tags: created.tags ?? [],
         workspacePath: created.workspacePath ?? "",
         chatRerunMode: created.chatRerunMode === "pipeline" ? "pipeline" : "node",
-        preserveNodeChatContextOnRun: created.preserveNodeChatContextOnRun ?? true,
+        clearNodeChatContextOnRun: created.clearNodeChatContextOnRun ?? false,
         nodes: created.nodes,
         edges: created.edges,
         selectedNodeId: null,
@@ -263,7 +263,7 @@ export const usePipelineStore = create<PipelineState>((set, get) => ({
         tags: next.tags ?? [],
         workspacePath: next.workspacePath ?? "",
         chatRerunMode: next.chatRerunMode === "pipeline" ? "pipeline" : "node",
-        preserveNodeChatContextOnRun: next.preserveNodeChatContextOnRun ?? true,
+        clearNodeChatContextOnRun: next.clearNodeChatContextOnRun ?? false,
         nodes: next.nodes,
         edges: next.edges,
         selectedNodeId: null,
@@ -288,7 +288,7 @@ export const usePipelineStore = create<PipelineState>((set, get) => ({
       name: `${source.name} Copy`,
       updatedAt: new Date().toISOString(),
       chatRerunMode: source.chatRerunMode === "pipeline" ? "pipeline" : "node",
-      preserveNodeChatContextOnRun: source.preserveNodeChatContextOnRun ?? true,
+      clearNodeChatContextOnRun: source.clearNodeChatContextOnRun ?? false,
       nodes: source.nodes.map((node) => ({
         ...node,
         data: {
@@ -310,7 +310,7 @@ export const usePipelineStore = create<PipelineState>((set, get) => ({
       tags: duplicated.tags ?? [],
       workspacePath: duplicated.workspacePath ?? "",
       chatRerunMode: duplicated.chatRerunMode === "pipeline" ? "pipeline" : "node",
-      preserveNodeChatContextOnRun: duplicated.preserveNodeChatContextOnRun ?? true,
+      clearNodeChatContextOnRun: duplicated.clearNodeChatContextOnRun ?? false,
       nodes: duplicated.nodes,
       edges: duplicated.edges,
       selectedNodeId: null,
@@ -326,7 +326,7 @@ export const usePipelineStore = create<PipelineState>((set, get) => ({
       tags: payload.tags ?? state.tags,
       workspacePath: payload.workspacePath ?? state.workspacePath,
       chatRerunMode: payload.chatRerunMode ?? state.chatRerunMode,
-      preserveNodeChatContextOnRun: payload.preserveNodeChatContextOnRun ?? state.preserveNodeChatContextOnRun,
+      clearNodeChatContextOnRun: payload.clearNodeChatContextOnRun ?? state.clearNodeChatContextOnRun,
     }));
   },
   setNodes: (nodes) => {
@@ -571,7 +571,7 @@ export const usePipelineStore = create<PipelineState>((set, get) => ({
       id: pipeline.id || `pipe-${crypto.randomUUID()}`,
       name: pipeline.name || "Imported Workflow",
       chatRerunMode: pipeline.chatRerunMode === "pipeline" ? "pipeline" : "node",
-      preserveNodeChatContextOnRun: pipeline.preserveNodeChatContextOnRun ?? true,
+      clearNodeChatContextOnRun: pipeline.clearNodeChatContextOnRun ?? false,
       updatedAt: new Date().toISOString(),
       nodes: pipeline.nodes.map((node) => ({
         ...node,
@@ -598,7 +598,7 @@ export const usePipelineStore = create<PipelineState>((set, get) => ({
       tags: normalized.tags ?? [],
       workspacePath: normalized.workspacePath ?? "",
       chatRerunMode: normalized.chatRerunMode === "pipeline" ? "pipeline" : "node",
-      preserveNodeChatContextOnRun: normalized.preserveNodeChatContextOnRun ?? true,
+      clearNodeChatContextOnRun: normalized.clearNodeChatContextOnRun ?? false,
       nodes: normalized.nodes,
       edges: normalized.edges,
       selectedNodeId: null,
@@ -633,7 +633,7 @@ export const usePipelineStore = create<PipelineState>((set, get) => ({
       tags: state.tags,
       workspacePath: state.workspacePath.trim() || undefined,
       chatRerunMode: state.chatRerunMode,
-      preserveNodeChatContextOnRun: state.preserveNodeChatContextOnRun,
+      clearNodeChatContextOnRun: state.clearNodeChatContextOnRun,
       nodes: state.nodes.map((node) => ({
         ...node,
         data: {

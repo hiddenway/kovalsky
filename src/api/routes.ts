@@ -54,7 +54,7 @@ const runStartSchema = z.object({
       stopOnFailure: z.boolean().optional(),
       timeoutMs: z.number().int().positive().optional(),
       credentialId: z.string().min(1).optional(),
-      preserveNodeChatContext: z.boolean().optional(),
+      clearNodeChatContext: z.boolean().optional(),
     })
     .optional(),
 });
@@ -186,7 +186,7 @@ export async function registerRoutes(app: FastifyInstance<any, any, any, any>, d
       stopOnFailure: parsed.data.overrides?.stopOnFailure,
       timeoutMs: parsed.data.overrides?.timeoutMs,
       credentialId: parsed.data.overrides?.credentialId,
-      preserveNodeChatContext: parsed.data.overrides?.preserveNodeChatContext,
+      clearNodeChatContext: parsed.data.overrides?.clearNodeChatContext,
     });
 
     return result;

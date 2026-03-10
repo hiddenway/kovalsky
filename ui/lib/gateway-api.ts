@@ -76,7 +76,7 @@ export class GatewayApi {
       stopOnFailure?: boolean;
       timeoutMs?: number;
       credentialId?: string;
-      preserveNodeChatContext?: boolean;
+      clearNodeChatContext?: boolean;
     };
   }): Promise<{ runId: string }> {
     return this.request<{ runId: string }>("/runs", {

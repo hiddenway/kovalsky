@@ -15,7 +15,7 @@ type Props = {
     tags: string[];
     workspacePath: string;
     chatRerunMode: "node" | "pipeline";
-    preserveNodeChatContextOnRun: boolean;
+    clearNodeChatContextOnRun: boolean;
   };
   edgeArtifactTypes: string[];
   activeRunId?: string | null;
@@ -35,7 +35,7 @@ type Props = {
     tags?: string[];
     workspacePath?: string;
     chatRerunMode?: "node" | "pipeline";
-    preserveNodeChatContextOnRun?: boolean;
+    clearNodeChatContextOnRun?: boolean;
   }) => void;
 };
 
@@ -769,33 +769,33 @@ export function InspectorPanel({
         </div>
 
         <div>
-          <p className="mb-1 text-xs text-zinc-400">Manual Run keeps node chat context</p>
+          <p className="mb-1 text-xs text-zinc-400">Clear node chat context on manual run</p>
           <div className="flex gap-2">
             <button
               type="button"
               className={`rounded-md border px-3 py-1 text-xs ${
-                pipeline.preserveNodeChatContextOnRun
+                !pipeline.clearNodeChatContextOnRun
                   ? "border-cyan-400/60 bg-cyan-500/20 text-cyan-100"
                   : "border-zinc-700 bg-zinc-900 text-zinc-300"
               }`}
-              onClick={() => onMetadataChange({ preserveNodeChatContextOnRun: true })}
+              onClick={() => onMetadataChange({ clearNodeChatContextOnRun: false })}
             >
-              Enabled
+              Keep
             </button>
             <button
               type="button"
               className={`rounded-md border px-3 py-1 text-xs ${
-                !pipeline.preserveNodeChatContextOnRun
+                pipeline.clearNodeChatContextOnRun
                   ? "border-cyan-400/60 bg-cyan-500/20 text-cyan-100"
                   : "border-zinc-700 bg-zinc-900 text-zinc-300"
               }`}
-              onClick={() => onMetadataChange({ preserveNodeChatContextOnRun: false })}
+              onClick={() => onMetadataChange({ clearNodeChatContextOnRun: true })}
             >
-              Disabled
+              Clear
             </button>
           </div>
           <p className="mt-1 text-[11px] text-zinc-500">
-            If disabled, manual run uses only node goals without previously saved chat context.
+            Keep: preserve node chat history between manual runs. Clear: wipe node chat history at run start.
           </p>
         </div>
 

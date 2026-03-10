@@ -409,4 +409,15 @@ export class DatabaseService {
       ORDER BY nm.created_at ASC, nm.id ASC
     `).all(pipelineId, nodeId) as NodeMessageRecord[];
   }
+
+  deleteNodeMessagesByPipeline(pipelineId: string): void {
+    this.db.prepare(`
+      DELETE FROM node_messages
+      WHERE run_id IN (
+        SELECT id
+        FROM runs
+        WHERE pipeline_id = ?
+      )
+    `).run(pipelineId);
+  }
 }

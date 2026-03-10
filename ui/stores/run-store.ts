@@ -278,7 +278,7 @@ export const useRunStore = create<RunState>((set, get) => ({
         overrides: pipeline.workspacePath?.trim()
           ? {
               workspacePath: pipeline.workspacePath.trim(),
-              preserveNodeChatContext: pipeline.preserveNodeChatContextOnRun ?? true,
+              clearNodeChatContext: pipeline.clearNodeChatContextOnRun ?? false,
             }
           : undefined,
       });
