@@ -79,15 +79,15 @@ function extractUrlsFromText(input: string): string[] {
 function buildAssistantStatus(node: ReactFlowNode<PipelineNodeData>): string {
   const handoff = node.data.handoff;
   if (!handoff) {
-    return "Статус: нет данных. Запусти workflow и я сформирую итоговый отчёт.";
+    return "Status: no data yet. Run the workflow and I will generate the final report.";
   }
-  return `Статус: ${handoff.status}\nКоротко: ${handoff.summary || "Шаг завершён."}`;
+  return `Status: ${handoff.status}\nSummary: ${handoff.summary || "Step completed."}`;
 }
 
 function buildAssistantDetailedReport(node: ReactFlowNode<PipelineNodeData>): string {
   const handoff = node.data.handoff;
   if (!handoff) {
-    return "Итоговый отчёт недоступен: шаг ещё не выполнялся.";
+    return "Final report unavailable: this step has not run yet.";
   }
 
   const urls = Array.from(
@@ -102,32 +102,32 @@ function buildAssistantDetailedReport(node: ReactFlowNode<PipelineNodeData>): st
   const results = handoff.results.filter((item) => item.trim().length > 0);
   const whatWasDone = handoff.summary.trim() && handoff.summary.trim().toLowerCase() !== "completed successfully"
     ? handoff.summary.trim()
-    : (comments[0] ?? "Шаг успешно выполнен, собраны артефакты и итоговые данные.");
+    : (comments[0] ?? "The step completed successfully. Artifacts and final outputs were collected.");
 
   const lines: string[] = [];
-  lines.push("Итоговый отчёт:");
-  lines.push(`Статус: ${handoff.status}`);
+  lines.push("Final report:");
+  lines.push(`Status: ${handoff.status}`);
   lines.push("");
-  lines.push("Что сделано:");
+  lines.push("What was done:");
   lines.push(whatWasDone);
   if (comments.length > 1) {
     lines.push(...comments.slice(1, 5).map((item) => `- ${item}`));
   }
   lines.push("");
   if (urls.length > 0) {
-    lines.push("Ссылки:");
+    lines.push("Links:");
     for (const url of urls.slice(0, 5)) {
       lines.push(`- ${url}`);
     }
     lines.push("");
   }
-  lines.push("Результаты:");
+  lines.push("Results:");
   if (results.length > 0) {
     for (const result of results.slice(0, 8)) {
       lines.push(`- ${result}`);
     }
   } else {
-    lines.push("- Явные артефакты не найдены.");
+    lines.push("- No explicit artifacts found.");
   }
 
   return lines.join("\n");

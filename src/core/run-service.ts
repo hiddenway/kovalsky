@@ -433,7 +433,7 @@ export class RunService {
         nodeId: input.nodeId,
         role: "system",
         phase: "run",
-        content: "Повторный запуск отменён: run не найден.",
+        content: "Rerun canceled: run not found.",
       });
       return;
     }
@@ -444,7 +444,7 @@ export class RunService {
         nodeId: input.nodeId,
         role: "system",
         phase: "run",
-        content: "Run уже выполняется. Дождись завершения текущего запуска.",
+        content: "Run is already in progress. Wait until the current run finishes.",
       });
       return;
     }
@@ -456,7 +456,7 @@ export class RunService {
         nodeId: input.nodeId,
         role: "system",
         phase: "run",
-        content: "Повторный запуск отменён: workflow не найден.",
+        content: "Rerun canceled: workflow not found.",
       });
       return;
     }
@@ -469,7 +469,7 @@ export class RunService {
         nodeId: input.nodeId,
         role: "system",
         phase: "run",
-        content: "Повторный запуск отменён: нода не найдена в графе.",
+        content: "Rerun canceled: node not found in the graph.",
       });
       return;
     }
@@ -605,7 +605,7 @@ export class RunService {
           nodeId: input.nodeId,
           role: "agent",
           phase: "run",
-          content: `Повторный запуск завершился ошибкой: ${error}`,
+          content: `Rerun failed: ${error}`,
         });
         return;
       }
@@ -637,7 +637,7 @@ export class RunService {
         nodeId: input.nodeId,
         role: "agent",
         phase: "run",
-        content: "Повторный запуск завершён успешно.",
+        content: "Rerun completed successfully.",
       });
 
       void this.emitPostStepReportForFollowup({
@@ -708,7 +708,7 @@ export class RunService {
         nodeId: input.nodeId,
         role: "agent",
         phase: "run",
-        content: `Повторный запуск завершился ошибкой: ${message}`,
+        content: `Rerun failed: ${message}`,
       });
     }
   }
@@ -728,7 +728,7 @@ export class RunService {
           nodeId: input.nodeId,
           role: "system",
           phase: "run",
-          content: "Повторный запуск workflow отменён: run не найден.",
+          content: "Workflow rerun canceled: run not found.",
         });
       }
       return { error: "run not found" };
@@ -742,7 +742,7 @@ export class RunService {
           nodeId: input.nodeId,
           role: "system",
           phase: "run",
-          content: "Повторный запуск workflow отменён: workflow не найден.",
+          content: "Workflow rerun canceled: workflow not found.",
         });
       }
       return { error: "workflow not found" };
@@ -763,7 +763,7 @@ export class RunService {
           nodeId: input.nodeId,
           role: "agent",
           phase: "run",
-          content: `Запустил новый прогон полного workflow: ${started.runId}`,
+          content: `Started a new full workflow rerun: ${started.runId}`,
           meta: {
             source: "chat_followup_rerun",
             rerunMode: "pipeline",
@@ -780,7 +780,7 @@ export class RunService {
           nodeId: input.nodeId,
           role: "agent",
           phase: "run",
-          content: `Не удалось запустить полный workflow: ${message}`,
+          content: `Failed to start full workflow rerun: ${message}`,
           meta: {
             source: "chat_followup_rerun",
             rerunMode: "pipeline",
@@ -1562,9 +1562,6 @@ export class RunService {
   }
 
   private buildNoStepReply(prompt: string): string {
-    if (/[А-Яа-яЁё]/.test(prompt)) {
-      return "По этой ноде ещё нет выполненного шага. Сначала запусти workflow, затем запроси отчёт в чате.";
-    }
     return "This node has no completed step yet. Run the workflow first, then request a report in chat.";
   }
 
@@ -1575,37 +1572,30 @@ export class RunService {
     artifactTitles: string[];
     urls: string[];
   }): string {
-    const isRussian = /[А-Яа-яЁё]/.test(input.prompt);
-    const statusLine = isRussian ? `Статус шага: ${input.status}` : `Step status: ${input.status}`;
-    const intro = isRussian
-      ? "Понял. Вот что вижу по текущему запуску:"
-      : "Understood. Here is what I can see from this run:";
+    const statusLine = `Step status: ${input.status}`;
+    const intro = "Understood. Here is what I can see from this run:";
     const lines: string[] = [intro, statusLine];
 
     if (input.stepError) {
-      lines.push(isRussian ? `Причина ошибки: ${input.stepError}` : `Failure reason: ${input.stepError}`);
+      lines.push(`Failure reason: ${input.stepError}`);
     }
 
     if (input.urls.length > 0) {
-      lines.push(isRussian ? "Проверь в первую очередь:" : "Check these first:");
+      lines.push("Check these first:");
       for (const url of input.urls.slice(0, 5)) {
         lines.push(`- ${url}`);
       }
     }
 
     if (input.artifactTitles.length > 0) {
-      lines.push(isRussian ? "Доступные артефакты:" : "Available artifacts:");
+      lines.push("Available artifacts:");
       for (const titleItem of input.artifactTitles.slice(0, 8)) {
         lines.push(`- ${titleItem}`);
       }
     }
 
     if (input.status !== "success") {
-      lines.push(
-        isRussian
-          ? "Если хочешь, могу сразу предложить пошаговый фикс под твой запрос."
-          : "If you want, I can immediately suggest a step-by-step fix for your request.",
-      );
+      lines.push("If you want, I can immediately suggest a step-by-step fix for your request.");
     }
 
     return lines.join("\n");
@@ -1685,7 +1675,7 @@ export class RunService {
       receivesFrom: incoming.get(node.id) ?? [],
       handoffTo: (outgoing.get(node.id) ?? []).map((targetNodeId) => ({
         nodeId: targetNodeId,
-        context: `Передай ноде ${targetNodeId} краткий handoff: что сделано, что изменено, что запускать и как проверить.`,
+        context: `Pass a concise handoff to node ${targetNodeId}: what was done, what changed, what to run, and how to verify.`,
         launchHints: [],
       })),
       notes: ["Deterministic handoff plan (planner disabled)."],

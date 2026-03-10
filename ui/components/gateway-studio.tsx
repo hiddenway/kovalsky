@@ -40,7 +40,7 @@ const starterNodes: AgentNode[] = [
     data: {
       title: "AGENT 1",
       agentId: "codex-cli",
-      goal: "Создай браузерную игру типа snake",
+      goal: "Build a browser-based snake-style game",
       settingsText: JSON.stringify(
         {
           command: "codex",
@@ -60,7 +60,7 @@ const starterNodes: AgentNode[] = [
     data: {
       title: "AGENT 2",
       agentId: "codex-cli",
-      goal: "Под все новые коммиты напиши юнит-тесты если нужно",
+      goal: "Write unit tests for all new commits when needed",
       settingsText: JSON.stringify(
         {
           command: "codex",
@@ -81,7 +81,7 @@ const starterNodes: AgentNode[] = [
     data: {
       title: "AGENT 3",
       agentId: "openclaw",
-      goal: "Проведи blackbox тестирование игры в браузере",
+      goal: "Perform black-box browser testing for the game",
       settingsText: JSON.stringify(
         {
           command: "openclaw",
@@ -537,7 +537,7 @@ export function GatewayStudio() {
         <div>
           <h1>Kovalsky Gateway Studio</h1>
           <p>
-            Goal + Chat per agent node. Handoff-контекст формируется напрямую из графа без planner.
+            Goal + chat per agent node. Handoff context is built directly from the graph without a planner.
           </p>
         </div>
         <div className="status-chip-wrap">
