@@ -60,7 +60,14 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.platform.artifact_name }}
-          path: release/**/*
+          path: |
+            release/*.AppImage
+            release/*.dmg
+            release/*.exe
+            release/*.zip
+            release/*.blockmap
+            release/latest*.yml
+            release/latest*.yaml
           if-no-files-found: error
 
   release:
@@ -74,13 +81,19 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           pattern: electron-*
-          merge-multiple: true
           path: release-assets
 
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
-          files: release-assets/**
+          files: |
+            release-assets/**/*.AppImage
+            release-assets/**/*.dmg
+            release-assets/**/*.exe
+            release-assets/**/*.zip
+            release-assets/**/*.blockmap
+            release-assets/**/latest*.yml
+            release-assets/**/latest*.yaml
           generate_release_notes: true
           fail_on_unmatched_files: true
           draft: false
