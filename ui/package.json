@@ -3,9 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "env -u NODE_PATH node ./node_modules/next/dist/bin/next dev",
-    "build": "env -u NODE_PATH node ./node_modules/next/dist/bin/next build",
-    "start": "env -u NODE_PATH node ./node_modules/next/dist/bin/next start",
+    "dev": "env -u NODE_PATH pnpm exec next dev",
+    "build": "env -u NODE_PATH pnpm exec next build",
+    "start": "env -u NODE_PATH pnpm exec next start",
     "lint": "eslint"
   },
   "dependencies": {
