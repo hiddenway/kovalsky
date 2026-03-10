@@ -1,0 +1,7 @@
+packages:
+  - .
+  - ui
+
+ignoredBuiltDependencies:
+  - sharp
+  - unrs-resolver

@@ -1,0 +1,39 @@
+@import "tailwindcss";
+
+:root {
+  --background: #0a0a0f;
+  --foreground: #edf2ff;
+  --surface-1: #101118;
+  --surface-2: #171922;
+  --border: #2b2f3f;
+  --accent: #2dd4bf;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-space-grotesk);
+  --font-mono: var(--font-ibm-plex-mono);
+}
+
+* {
+  border-color: var(--border);
+}
+
+html,
+body {
+  min-height: 100%;
+}
+
+body {
+  background:
+    radial-gradient(circle at 14% 12%, rgba(45, 212, 191, 0.12), transparent 38%),
+    radial-gradient(circle at 88% 2%, rgba(56, 189, 248, 0.08), transparent 42%),
+    var(--background);
+  color: var(--foreground);
+  font-family: var(--font-space-grotesk), sans-serif;
+}
+
+.react-flow__attribution {
+  display: none;
+}

@@ -1,0 +1,97 @@
+{
+  "name": "kovalsky",
+  "version": "0.1.0",
+  "private": true,
+  "type": "commonjs",
+  "packageManager": "pnpm@10.17.1",
+  "main": "dist/index.js",
+  "scripts": {
+    "predev": "node scripts/ensure-better-sqlite3.cjs",
+    "dev": "tsx watch src/index.ts",
+    "prestart": "node scripts/ensure-better-sqlite3.cjs",
+    "build": "tsc -p tsconfig.json",
+    "build:backend": "pnpm run build",
+    "build:ui": "pnpm --dir ui build",
+    "prepare:ui:standalone": "node scripts/prepare-ui-standalone.cjs",
+    "prepare:electron-native-deps": "node scripts/rebuild-better-sqlite3-electron.cjs && electron-builder install-app-deps",
+    "prepare:runtime-node-modules": "node scripts/prepare-runtime-node-modules.cjs",
+    "build:app": "pnpm run build:backend && pnpm run build:ui && pnpm run prepare:ui:standalone && pnpm run prepare:electron-native-deps && pnpm run prepare:runtime-node-modules",
+    "electron:dev": "pnpm run build:app && electron desktop/main.cjs",
+    "electron:dist:quick": "pnpm run build:app && electron-builder --mac zip --publish never",
+    "electron:dist": "pnpm run build:app && electron-builder",
+    "start": "node dist/index.js",
+    "check": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@pinojs/redact": "^0.4.0",
+    "@fastify/cors": "^11.1.0",
+    "@fastify/websocket": "^11.2.0",
+    "@openai/codex": "^0.111.0",
+    "atomic-sleep": "^1.0.0",
+    "better-sqlite3": "^12.2.0",
+    "fastify": "^5.6.2",
+    "json-schema-traverse": "^1.0.0",
+    "openclaw": "^2026.3.2",
+    "on-exit-leak-free": "^2.1.0",
+    "pino-abstract-transport": "^2.0.0",
+    "pnpm": "^10.17.1",
+    "pino": "^9.13.1",
+    "pino-std-serializers": "^7.0.0",
+    "process-warning": "^5.0.0",
+    "quick-format-unescaped": "^4.0.3",
+    "real-require": "^0.2.0",
+    "safe-stable-stringify": "^2.3.1",
+    "sonic-boom": "^4.0.1",
+    "thread-stream": "^3.0.0",
+    "tree-kill": "^1.2.2",
+    "uuid": "^13.0.0",
+    "zod": "^4.1.11"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^24.6.1",
+    "electron": "^37.5.1",
+    "electron-builder": "^26.0.12",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "better-sqlite3"
+    ]
+  },
+  "build": {
+    "extraMetadata": {
+      "main": "desktop/main.cjs"
+    },
+    "npmRebuild": false,
+    "nodeGypRebuild": false,
+    "disableDefaultIgnoredFiles": true,
+    "appId": "com.kovalsky.gateway",
+    "productName": "Kovalsky Gateway",
+    "asar": false,
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "desktop/**/*",
+      "dist/**/*",
+      "plugins/**/*",
+      ".runtime-node_modules/**/*",
+      "ui/.next/standalone/**/*",
+      "!node_modules/**/*",
+      "!ui/node_modules/**/*",
+      "package.json",
+      "pnpm-lock.yaml"
+    ],
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "category": "public.app-category.developer-tools"
+    }
+  }
+}
