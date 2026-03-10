@@ -37,6 +37,7 @@ export interface StartRunOverrides {
   stopOnFailure?: boolean;
   timeoutMs?: number;
   credentialId?: string;
+  preserveNodeChatContext?: boolean;
 }
 
 type FollowupRerunDecision = "rerun" | "no_rerun" | "unknown";
@@ -104,7 +105,10 @@ export class RunService {
     const workspaceReportPath = this.prepareWorkspaceReportLink(run.id, workspacePath);
 
     const env = await this.buildAgentEnv(overrides.credentialId);
-    const executionGraph = this.applyPipelineChatContextToGraph(graph, pipelineId);
+    const shouldPreserveNodeChatContext = overrides.preserveNodeChatContext !== false;
+    const executionGraph = shouldPreserveNodeChatContext
+      ? this.applyPipelineChatContextToGraph(graph, pipelineId)
+      : graph;
 
     for (const node of executionGraph.nodes) {
       if ((node.goal ?? "").trim()) {

@@ -37,6 +37,7 @@ export type Pipeline = {
   tags?: string[];
   workspacePath?: string;
   chatRerunMode?: "node" | "pipeline";
+  preserveNodeChatContextOnRun?: boolean;
   nodes: ReactFlowNode<PipelineNodeData>[];
   edges: ReactFlowEdge[];
   updatedAt: string;

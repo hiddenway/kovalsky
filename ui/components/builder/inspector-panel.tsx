@@ -15,6 +15,7 @@ type Props = {
     tags: string[];
     workspacePath: string;
     chatRerunMode: "node" | "pipeline";
+    preserveNodeChatContextOnRun: boolean;
   };
   edgeArtifactTypes: string[];
   activeRunId?: string | null;
@@ -28,7 +29,14 @@ type Props = {
   onBeforeSendChat?: () => Promise<void>;
   onSavePipeline: () => void;
   onExternalRunStarted?: (runId: string) => void;
-  onMetadataChange: (payload: { name?: string; description?: string; tags?: string[]; workspacePath?: string; chatRerunMode?: "node" | "pipeline" }) => void;
+  onMetadataChange: (payload: {
+    name?: string;
+    description?: string;
+    tags?: string[];
+    workspacePath?: string;
+    chatRerunMode?: "node" | "pipeline";
+    preserveNodeChatContextOnRun?: boolean;
+  }) => void;
 };
 
 type ChatMessage = {
@@ -757,6 +765,37 @@ export function InspectorPanel({
           </div>
           <p className="mt-1 text-[11px] text-zinc-500">
             If the agent decides to rerun after your chat message, this controls rerun scope.
+          </p>
+        </div>
+
+        <div>
+          <p className="mb-1 text-xs text-zinc-400">Manual Run keeps node chat context</p>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              className={`rounded-md border px-3 py-1 text-xs ${
+                pipeline.preserveNodeChatContextOnRun
+                  ? "border-cyan-400/60 bg-cyan-500/20 text-cyan-100"
+                  : "border-zinc-700 bg-zinc-900 text-zinc-300"
+              }`}
+              onClick={() => onMetadataChange({ preserveNodeChatContextOnRun: true })}
+            >
+              Enabled
+            </button>
+            <button
+              type="button"
+              className={`rounded-md border px-3 py-1 text-xs ${
+                !pipeline.preserveNodeChatContextOnRun
+                  ? "border-cyan-400/60 bg-cyan-500/20 text-cyan-100"
+                  : "border-zinc-700 bg-zinc-900 text-zinc-300"
+              }`}
+              onClick={() => onMetadataChange({ preserveNodeChatContextOnRun: false })}
+            >
+              Disabled
+            </button>
+          </div>
+          <p className="mt-1 text-[11px] text-zinc-500">
+            If disabled, manual run uses only node goals without previously saved chat context.
           </p>
         </div>
 

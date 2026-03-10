@@ -7,6 +7,7 @@ export type CreateRunRequest = {
   pipelineId: string;
   overrides?: {
     workspacePath?: string;
+    preserveNodeChatContext?: boolean;
   };
 };
 

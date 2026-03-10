@@ -242,6 +242,7 @@ function CanvasBuilderInner(): React.JSX.Element {
   const tags = usePipelineStore((state) => state.tags);
   const workspacePath = usePipelineStore((state) => state.workspacePath);
   const chatRerunMode = usePipelineStore((state) => state.chatRerunMode);
+  const preserveNodeChatContextOnRun = usePipelineStore((state) => state.preserveNodeChatContextOnRun);
   const nodes = usePipelineStore((state) => state.nodes);
   const edges = usePipelineStore((state) => state.edges);
   const selectedNodeId = usePipelineStore((state) => state.selectedNodeId);
@@ -766,7 +767,7 @@ function CanvasBuilderInner(): React.JSX.Element {
           <InspectorPanel
             selectedNode={selectedNode}
             selectedEdge={selectedEdge}
-            pipeline={{ name, description, tags, workspacePath, chatRerunMode }}
+            pipeline={{ name, description, tags, workspacePath, chatRerunMode, preserveNodeChatContextOnRun }}
             edgeArtifactTypes={edgeArtifactTypes}
             activeRunId={latestRun?.run.id ?? null}
             showHandoff={Boolean(selectedNode && handoffNodeId && selectedNode.id === handoffNodeId)}
