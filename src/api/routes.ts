@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import path from "node:path";
 import { z } from "zod";
 import type { FastifyInstance } from "fastify";
 import type { PluginRegistry } from "../plugins/registry";
@@ -101,6 +102,39 @@ export async function registerRoutes(app: FastifyInstance<any, any, any, any>, d
       outputs: manifest.outputs,
       permissions: manifest.permissions,
     }));
+  });
+
+  app.get("/workflow-templates", async () => {
+    const templatesDir = path.resolve(process.cwd(), "templates", "workflows");
+    if (!fs.existsSync(templatesDir)) {
+      return { templates: [] as unknown[] };
+    }
+
+    let fileNames: string[] = [];
+    try {
+      fileNames = fs
+        .readdirSync(templatesDir, { withFileTypes: true })
+        .filter((entry) => entry.isFile() && entry.name.toLowerCase().endsWith(".json"))
+        .map((entry) => entry.name)
+        .sort((left, right) => left.localeCompare(right));
+    } catch {
+      return { templates: [] as unknown[] };
+    }
+
+    const templates: unknown[] = [];
+    for (const fileName of fileNames) {
+      const filePath = path.join(templatesDir, fileName);
+      try {
+        const parsed = JSON.parse(fs.readFileSync(filePath, "utf8")) as unknown;
+        if (parsed && typeof parsed === "object") {
+          templates.push(parsed);
+        }
+      } catch {
+        continue;
+      }
+    }
+
+    return { templates };
   });
 
   app.post("/agents/validate", async (request, reply) => {

@@ -118,6 +118,19 @@ class RestKovalskyApiClient implements KovalskyApiClient {
     return getSupportedAgents(raw);
   }
 
+  async getWorkflowTemplates() {
+    const response = await this.fetchWithFallback("/workflow-templates", {
+      method: "GET",
+      cache: "no-store",
+    });
+
+    if (!response.ok) {
+      await this.throwHttpError(response, "Failed to load workflow templates");
+    }
+
+    return (await response.json()) as { templates: Pipeline[] };
+  }
+
   async createPipeline(pipeline: Pipeline) {
     const response = await this.fetchWithFallback("/pipelines", {
       method: "POST",

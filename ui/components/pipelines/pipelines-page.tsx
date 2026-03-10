@@ -122,6 +122,7 @@ export function PipelinesPage(): React.JSX.Element {
   const pipelines = usePipelineStore((state) => state.pipelines);
   const init = usePipelineStore((state) => state.init);
   const createPipeline = usePipelineStore((state) => state.createPipeline);
+  const seedTemplatePipelines = usePipelineStore((state) => state.seedTemplatePipelines);
   const openPipeline = usePipelineStore((state) => state.openPipeline);
   const saveActivePipeline = usePipelineStore((state) => state.saveActivePipeline);
   const updateMetadata = usePipelineStore((state) => state.updateMetadata);
@@ -150,6 +151,7 @@ export function PipelinesPage(): React.JSX.Element {
   });
   const [codexAuthStatus, setCodexAuthStatus] = useState<CodexAuthStatus | null>(null);
   const [openaiApiKey, setOpenaiApiKey] = useState("");
+  const [templatesChecked, setTemplatesChecked] = useState(false);
 
   const pushToast = useToastStore((state) => state.pushToast);
   const gatewayConnected = gatewayStatus === "connected";
@@ -255,6 +257,41 @@ export function PipelinesPage(): React.JSX.Element {
     }
     initRuns();
   }, [gatewayConnected, initRuns]);
+
+  useEffect(() => {
+    if (!gatewayConnected || !hydrated || templatesChecked) {
+      return;
+    }
+
+    let disposed = false;
+    const maybeSeedTemplates = async (): Promise<void> => {
+      try {
+        const payload = await api.getWorkflowTemplates();
+        if (disposed) {
+          return;
+        }
+        const seededCount = seedTemplatePipelines(payload.templates);
+        if (seededCount > 0) {
+          pushToast({
+            title: `Loaded ${seededCount} starter workflow template${seededCount === 1 ? "" : "s"}`,
+            tone: "success",
+          });
+        }
+      } catch {
+        // ignore template loading failures and keep default workflow
+      } finally {
+        if (!disposed) {
+          setTemplatesChecked(true);
+        }
+      }
+    };
+
+    void maybeSeedTemplates();
+
+    return () => {
+      disposed = true;
+    };
+  }, [api, gatewayConnected, hydrated, pushToast, seedTemplatePipelines, templatesChecked]);
 
   useEffect(() => {
     if (!gatewayConnected) {

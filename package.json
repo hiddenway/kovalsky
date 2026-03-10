@@ -79,6 +79,7 @@
       "desktop/**/*",
       "dist/**/*",
       "plugins/**/*",
+      "templates/workflows/**/*",
       ".runtime-node_modules/**/*",
       "ui/.next/standalone/**/*",
       "!node_modules/**/*",

@@ -28,6 +28,91 @@ function makeDefaultPipeline(): Pipeline {
   };
 }
 
+function looksLikePristineDefaultPipeline(pipeline: Pipeline): boolean {
+  return (
+    pipeline.name === "New Workflow" &&
+    (pipeline.description ?? "").trim().length === 0 &&
+    (pipeline.tags ?? []).length === 0 &&
+    (pipeline.workspacePath ?? "").trim().length === 0 &&
+    pipeline.nodes.length === 0 &&
+    pipeline.edges.length === 0
+  );
+}
+
+function normalizeTemplatePipeline(template: Pipeline, index: number): Pipeline {
+  const normalizedName = template.name?.trim() ? template.name.trim() : `Template Workflow ${index + 1}`;
+  const pipelineId = template.id?.trim() || `pipe-${crypto.randomUUID()}`;
+  const seenNodeIds = new Set<string>();
+  const templateNodes = Array.isArray(template.nodes) ? template.nodes : [];
+
+  const normalizedNodes: ReactFlowNode<PipelineNodeData>[] = templateNodes.map((node, nodeIndex) => {
+    let nextNodeId = node.id?.trim() || `node-${crypto.randomUUID()}`;
+    while (seenNodeIds.has(nextNodeId)) {
+      nextNodeId = `node-${crypto.randomUUID()}`;
+    }
+    seenNodeIds.add(nextNodeId);
+
+    const normalizedAgentId = normalizeAgentId(node.data?.agentId ?? "codex-cli");
+    const defaultGoal = `Goal for ${normalizedAgentId}`;
+    const x = typeof node.position?.x === "number" ? node.position.x : 120 + nodeIndex * 280;
+    const y = typeof node.position?.y === "number" ? node.position.y : 120;
+    return {
+      id: nextNodeId,
+      type: "agentNode",
+      position: { x, y },
+      data: {
+        agentId: normalizedAgentId,
+        goal: node.data?.goal?.trim() || defaultGoal,
+        customName: node.data?.customName?.trim() || undefined,
+        settings: node.data?.settings,
+      },
+    };
+  });
+
+  const validNodeIds = new Set(normalizedNodes.map((node) => node.id));
+  const normalizedEdges: ReactFlowEdge[] = [];
+  const seenEdgeIds = new Set<string>();
+  const templateEdges = Array.isArray(template.edges) ? template.edges : [];
+  for (const edge of templateEdges) {
+    if (!validNodeIds.has(edge.source) || !validNodeIds.has(edge.target) || edge.source === edge.target) {
+      continue;
+    }
+    let nextEdgeId = edge.id?.trim() || `edge-${crypto.randomUUID()}`;
+    while (seenEdgeIds.has(nextEdgeId)) {
+      nextEdgeId = `edge-${crypto.randomUUID()}`;
+    }
+    seenEdgeIds.add(nextEdgeId);
+    normalizedEdges.push({
+      id: nextEdgeId,
+      source: edge.source,
+      target: edge.target,
+      markerEnd: {
+        type: MarkerType.ArrowClosed,
+        width: 20,
+        height: 20,
+        color: "#71717a",
+      },
+      style: {
+        strokeWidth: 3,
+        stroke: "#71717a",
+      },
+    });
+  }
+
+  return {
+    id: pipelineId,
+    name: normalizedName,
+    description: template.description ?? "",
+    tags: template.tags ?? [],
+    workspacePath: "",
+    chatRerunMode: template.chatRerunMode === "pipeline" ? "pipeline" : "node",
+    clearNodeChatContextOnRun: template.clearNodeChatContextOnRun ?? false,
+    nodes: normalizedNodes,
+    edges: normalizedEdges,
+    updatedAt: new Date(Date.now() - index * 1000).toISOString(),
+  };
+}
+
 function withRuntimeStatus(
   nodes: ReactFlowNode<PipelineNodeData>[],
   statuses: Record<string, StepStatus | undefined>,
@@ -84,6 +169,7 @@ type PipelineState = {
   setSelection: (payload: { nodeId?: string | null; edgeId?: string | null }) => void;
   exportActivePipeline: () => string;
   importPipelineJson: (json: string) => string;
+  seedTemplatePipelines: (templates: Pipeline[]) => number;
   applyStepStatuses: (statuses: Record<string, StepStatus | undefined>) => void;
   clearStepStatuses: () => void;
   getActivePipelineSnapshot: () => Pipeline;
@@ -606,6 +692,41 @@ export const usePipelineStore = create<PipelineState>((set, get) => ({
     });
 
     return normalized.id;
+  },
+  seedTemplatePipelines: (templates) => {
+    const state = get();
+    if (templates.length === 0) {
+      return 0;
+    }
+    if (state.pipelines.length !== 1 || !looksLikePristineDefaultPipeline(state.pipelines[0])) {
+      return 0;
+    }
+
+    const normalized = templates
+      .map((template, index) => normalizeTemplatePipeline(template, index))
+      .filter((pipeline) => pipeline.nodes.length > 0);
+    if (normalized.length === 0) {
+      return 0;
+    }
+
+    writePipelinesToStorage(normalized);
+    const first = normalized[0];
+    set({
+      pipelines: normalized,
+      activePipelineId: first.id,
+      name: first.name,
+      description: first.description ?? "",
+      tags: first.tags ?? [],
+      workspacePath: first.workspacePath ?? "",
+      chatRerunMode: first.chatRerunMode === "pipeline" ? "pipeline" : "node",
+      clearNodeChatContextOnRun: first.clearNodeChatContextOnRun ?? false,
+      nodes: first.nodes,
+      edges: first.edges,
+      selectedNodeId: null,
+      selectedEdgeId: null,
+    });
+
+    return normalized.length;
   },
   applyStepStatuses: (statuses) => {
     set((state) => ({
