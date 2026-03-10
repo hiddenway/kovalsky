@@ -186,12 +186,13 @@ export function InspectorPanel({
   const chatBottomRef = useRef<HTMLDivElement | null>(null);
   const chatInitializedForNodeRef = useRef<string | null>(null);
   const externalRunSeenRef = useRef<Set<string>>(new Set());
-  const announceExternalRun = useCallback((runId: string): void => {
+  const announceExternalRun = useCallback((runId: string, dedupeKey?: string): void => {
     const normalized = runId.trim();
-    if (!normalized || externalRunSeenRef.current.has(normalized)) {
+    const normalizedKey = (dedupeKey ?? normalized).trim();
+    if (!normalized || !normalizedKey || externalRunSeenRef.current.has(normalizedKey)) {
       return;
     }
-    externalRunSeenRef.current.add(normalized);
+    externalRunSeenRef.current.add(normalizedKey);
     onExternalRunStarted?.(normalized);
   }, [onExternalRunStarted]);
   const scrollChatToBottom = (): void => {
@@ -241,11 +242,11 @@ export function InspectorPanel({
               rerunMode?: unknown;
             };
             if (typeof meta.startedRunId === "string" && meta.startedRunId.trim()) {
-              announceExternalRun(meta.startedRunId);
+              announceExternalRun(meta.startedRunId, `started-run:${message.id}`);
               continue;
             }
             if (meta.rerunDecision === "rerun" && meta.rerunMode === "node" && activeRunId) {
-              announceExternalRun(activeRunId);
+              announceExternalRun(activeRunId, `node-rerun:${message.id}`);
             }
           } catch {
             continue;
@@ -434,9 +435,9 @@ export function InspectorPanel({
                           rerunMode?: unknown;
                         };
                         if (typeof meta.startedRunId === "string" && meta.startedRunId.trim()) {
-                          announceExternalRun(meta.startedRunId);
+                          announceExternalRun(meta.startedRunId, `started-run:${payload.message.id}`);
                         } else if (meta.rerunDecision === "rerun" && meta.rerunMode === "node") {
-                          announceExternalRun(activeRunId);
+                          announceExternalRun(activeRunId, `node-rerun:${payload.message.id}`);
                         }
                       } catch {
                         // ignore malformed meta
