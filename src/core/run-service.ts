@@ -41,7 +41,7 @@ export interface StartRunOverrides {
 
 type FollowupRerunDecision = "rerun" | "no_rerun" | "unknown";
 type NodeChatContextMode = "off" | "light" | "strict";
-type NodeFollowupRerunLaunch = "started" | "already_running";
+type NodeFollowupRerunLaunch = "started" | "already_running" | "run_canceled";
 
 interface FollowupReplyResult {
   reply: string;
@@ -335,6 +335,8 @@ export class RunService {
           ? startedRunId
           ? `${followup.reply}\n\nЗапустил новый прогон полного workflow: ${startedRunId}`
           : `${followup.reply}\n\nНе удалось запустить полный workflow: ${pipelineRerunError ?? "unknown error"}`
+        : nodeRerunLaunch === "run_canceled"
+          ? `${followup.reply}\n\nПовторный прогон не запущен: run уже отменён.`
         : nodeRerunLaunch === "already_running"
           ? `${followup.reply}\n\nПовторный прогон этой ноды уже выполняется. Дождись завершения текущего rerun.`
           : `${followup.reply}\n\nЗапускаю повторный прогон этой ноды с учётом твоего сообщения.`
@@ -364,6 +366,10 @@ export class RunService {
     nodeId: string;
     prompt: string;
   }): NodeFollowupRerunLaunch {
+    if (this.isRunCanceled(input.runId)) {
+      return "run_canceled";
+    }
+
     const key = this.buildNodeFollowupRerunKey(input.runId, input.nodeId);
     if (this.activeNodeFollowupReruns.has(key) || this.hasNodeFollowupRerunInProgress(input.runId, input.nodeId)) {
       return "already_running";
@@ -386,6 +392,10 @@ export class RunService {
       .some((step) => step.node_id === nodeId && (step.status === "pending" || step.status === "running"));
   }
 
+  private isRunCanceled(runId: string): boolean {
+    return this.db.getRun(runId)?.status === "canceled";
+  }
+
   private async executeFollowupNodeRun(input: {
     runId: string;
     nodeId: string;
@@ -399,6 +409,16 @@ export class RunService {
         role: "system",
         phase: "run",
         content: "Повторный запуск отменён: run не найден.",
+      });
+      return;
+    }
+    if (run.status === "canceled") {
+      this.createNodeMessage({
+        runId: input.runId,
+        nodeId: input.nodeId,
+        role: "system",
+        phase: "run",
+        content: "Повторный запуск отменён: run уже отменён.",
       });
       return;
     }
@@ -447,6 +467,21 @@ export class RunService {
       predecessorArtifacts: [],
       handoffs: [],
     };
+
+    if (this.isRunCanceled(input.runId)) {
+      this.db.updateStepRunStatus(stepRun.id, "canceled", null, "Run canceled by user");
+      this.eventBus.emit({
+        runId: input.runId,
+        type: "step_status",
+        at: new Date().toISOString(),
+        payload: {
+          nodeId: input.nodeId,
+          stepRunId: stepRun.id,
+          status: "canceled",
+        },
+      });
+      return;
+    }
 
     this.db.updateRunStatus(input.runId, "running", null);
     this.eventBus.emit({
@@ -511,6 +546,30 @@ export class RunService {
         .map((artifactId) => this.db.getArtifact(artifactId))
         .filter((artifact): artifact is ArtifactRecord => Boolean(artifact))
         .map((artifact) => `${artifact.title} (${artifact.type})`);
+
+      if (this.isRunCanceled(input.runId)) {
+        this.db.updateStepRunStatus(stepRun.id, "canceled", null, "Run canceled by user");
+        this.eventBus.emit({
+          runId: input.runId,
+          type: "step_status",
+          at: new Date().toISOString(),
+          payload: {
+            nodeId: input.nodeId,
+            stepRunId: stepRun.id,
+            status: "canceled",
+          },
+        });
+        this.eventBus.emit({
+          runId: input.runId,
+          type: "run_status",
+          at: new Date().toISOString(),
+          payload: {
+            status: "canceled",
+            errorSummary: "Run canceled by user",
+          },
+        });
+        return;
+      }
 
       if (result.exitCode !== 0) {
         const error = `Agent exited with code ${result.exitCode}`;
@@ -592,6 +651,30 @@ export class RunService {
         followupPrompt: input.prompt,
       });
     } catch (error) {
+      if (this.isRunCanceled(input.runId)) {
+        this.db.updateStepRunStatus(stepRun.id, "canceled", null, "Run canceled by user");
+        this.eventBus.emit({
+          runId: input.runId,
+          type: "step_status",
+          at: new Date().toISOString(),
+          payload: {
+            nodeId: input.nodeId,
+            stepRunId: stepRun.id,
+            status: "canceled",
+          },
+        });
+        this.eventBus.emit({
+          runId: input.runId,
+          type: "run_status",
+          at: new Date().toISOString(),
+          payload: {
+            status: "canceled",
+            errorSummary: "Run canceled by user",
+          },
+        });
+        return;
+      }
+
       const message = error instanceof Error ? error.message : "Step execution failed";
       this.db.updateStepRunStatus(stepRun.id, "failed", 1, message);
       this.db.updateRunStatus(input.runId, "failed", message);
