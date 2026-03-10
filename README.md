@@ -1,150 +1,144 @@
 # Kovalsky
 
-Run an AI team with a single prompt.
+> 🚀 Run an AI team with a single prompt.
 
-Kovalsky is an open-source platform for building and running AI employees.
-
-Each AI agent behaves like a team member with a role and responsibilities.
-Users coordinate these agents using workflows.
-
-Instead of interacting with a single AI assistant, Kovalsky allows you to manage a team of specialized AI agents working together to complete complex tasks.
+Kovalsky is an open-source platform for building and running AI employees.  
+Instead of chatting with one generic assistant, you coordinate a team of specialized agents through workflows.
 
 <p align="center">
-
-<a href="https://github.com/hiddenway/kovalsky/releases">Download</a> •
-<a href="https://github.com/hiddenway/kovalsky/discussions">Community</a>
-
+  <a href="https://github.com/hiddenway/kovalsky/releases">⬇️ Download</a> •
+  <a href="https://github.com/hiddenway/kovalsky/discussions">💬 Community</a>
 </p>
 
-## Pipeline Builder UI
+## 📚 Contents
+
+- [🧭 Why Kovalsky](#why-kovalsky)
+- [🖼️ Pipeline Builder UI](#pipeline-builder-ui)
+- [🧠 Core Idea](#core-idea)
+- [🧩 Core Concepts](#core-concepts)
+- [🏗️ Architecture](#architecture)
+- [⚙️ JSON Examples](#json-examples)
+- [⚡ Installation & Run](#installation-and-run)
+- [🖥️ Desktop (Electron)](#desktop-electron)
+- [🎯 Use Cases](#use-cases)
+- [🤝 Contributing](#contributing)
+- [📄 License](#license)
+- [🌍 Community](#community)
+
+<a id="why-kovalsky"></a>
+## 🧭 Why Kovalsky
+
+Most AI tools follow this model:
+
+`User -> AI -> Response`
+
+Kovalsky uses a team model:
+
+`User -> Workflow -> AI Agents -> Result`
+
+✅ Human-like collaboration  
+✅ Direct control over each agent  
+✅ Workflow-driven execution  
+✅ Simple, understandable architecture
+
+<a id="pipeline-builder-ui"></a>
+## 🖼️ Pipeline Builder UI
 
 ![Pipeline Builder UI](./docs/images/pipeline-builder.png)
 
-## The Idea
+<a id="core-idea"></a>
+## 🧠 Core Idea
 
-Most AI tools work like this:
+Each AI agent behaves like a teammate with a role and responsibilities.
+Users define how these agents collaborate and pass context between steps.
 
-User -> AI -> Response
+Example flow:
 
-Kovalsky introduces a different model:
-
-User -> Workflow -> AI Agents -> Result
-
-Each agent behaves like a specialized employee:
-
-- Developer
-- Researcher
-- QA tester
-- DevOps engineer
-- Analyst
-
-Users define how these agents collaborate using workflows.
-
-## Example Workflow
-
-Example workflow for building a simple application:
-
+```text
 User request
-     ↓
+   ↓
 Research Agent
-     ↓
+   ↓
 Developer Agent
-     ↓
+   ↓
 Testing Agent
-     ↓
+   ↓
 Deployment Agent
+```
 
-Each agent performs its task and passes context to the next one.
+This makes multi-step tasks easier to manage and scale.
 
-This allows AI systems to solve complex multi-step problems.
+<a id="core-concepts"></a>
+## 🧩 Core Concepts
 
-## Core Concepts
+### 👷 Agents (AI Employees)
 
-### Agents (AI Employees)
-
-Agents are autonomous AI workers responsible for performing tasks.
+Agents are autonomous workers responsible for concrete tasks.
 
 Each agent has:
 
-- role — what the agent is responsible for
-- goal — what the agent tries to achieve
-- execution environment — where the agent runs
+- `role` - responsibility area
+- `goal` - target outcome
+- `execution environment` - where it runs
 
-Example roles:
+Typical roles:
 
 - software engineer
 - QA tester
 - research analyst
 - DevOps engineer
 
-### Direct Communication
+### 🗣️ Direct Communication
 
-You can communicate with each agent individually.
+You can talk to each agent individually to:
 
-Like with human teammates, you can:
-
-- ask an agent to clarify its work
+- clarify work
 - adjust instructions
 - refine results
 - correct mistakes
 
-This gives fine-grained control over a workflow.
+This gives precise control over the workflow process.
 
-### Workflows
-
-Workflows define how agents collaborate.
+### 🔁 Workflows
 
 A workflow is a sequence (or graph) of agents that execute tasks step by step.
 
-Example:
+Example chain: `Research -> Development -> Testing -> Deployment`
 
-Research -> Development -> Testing -> Deployment
+### 🎛️ Execution Model
 
-Each agent receives context from previous steps and continues the task.
-
-### Execution Model
-
-Workflows are controlled by the user.
-
-Users can:
+Users control execution and can:
 
 - run agents manually
 - execute workflows
-- pass context between agents
-- communicate with specific agents
-- monitor execution results
+- pass context between steps
+- communicate with a specific agent
+- monitor results
 
-## Architecture
+<a id="architecture"></a>
+## 🏗️ Architecture
 
-The architecture is intentionally simple:
+Kovalsky keeps the architecture intentionally simple:
 
+```text
 User
- |
- v
+  |
+  v
 Workflow
- |
- v
+  |
+  v
 Agents
- |
- v
+  |
+  v
 Execution
+```
 
 Agents perform tasks and return results back to the workflow.
 
-## Why Kovalsky is Different
+<a id="json-examples"></a>
+## ⚙️ JSON Examples
 
-Many AI agent frameworks focus on autonomous orchestration where agents run automatically with minimal user control.
-
-Kovalsky takes a different approach.
-
-Instead of hiding the process, Kovalsky allows you to work directly with your AI team.
-
-- Human-like collaboration: you interact with agents like team members.
-- Direct control: you can step in at any point and guide a specific agent.
-- Workflow-driven: tasks are divided between specialized agents.
-- Simple architecture: workflows coordinate agents without heavy orchestration layers.
-
-## Example Agent Definition
+### Agent Definition
 
 ```json
 {
@@ -154,7 +148,7 @@ Instead of hiding the process, Kovalsky allows you to work directly with your AI
 }
 ```
 
-## Example Workflow Definition
+### Workflow Definition
 
 ```json
 {
@@ -167,17 +161,15 @@ Instead of hiding the process, Kovalsky allows you to work directly with your AI
 }
 ```
 
-## Installation
+<a id="installation-and-run"></a>
+## ⚡ Installation & Run
 
-### Download Prebuilt Release
+### 1) Download Prebuilt Release
 
-You can download a prebuilt version from:
-
+Use the latest release:
 [https://github.com/hiddenway/kovalsky/releases](https://github.com/hiddenway/kovalsky/releases)
 
-### Build and Run from Source
-
-Clone and install:
+### 2) Build and Run from Source
 
 ```bash
 git clone https://github.com/hiddenway/kovalsky.git
@@ -200,22 +192,21 @@ nvm use node
 pnpm --dir ui run dev
 ```
 
-Open:
-
-- `http://localhost:3000/pipelines`
+Open: `http://localhost:3000/pipelines`
 
 Notes:
 
 - Backend default URL: `http://127.0.0.1:8787`
-- If a workflow has no workspace, opening it from Workflows page requires choosing a workspace first.
-- If you switch Node versions and get `better-sqlite3` ABI errors, run:
+- If a workflow has no workspace, choose a workspace first in the Workflows page.
+- If you switch Node versions and get `better-sqlite3` ABI errors:
 
 ```bash
 nvm use node
 pnpm rebuild better-sqlite3
 ```
 
-## Desktop (Electron)
+<a id="desktop-electron"></a>
+## 🖥️ Desktop (Electron)
 
 Local desktop run from source:
 
@@ -240,51 +231,19 @@ nvm use node
 
 Build artifacts are written to `release/`.
 
-## Use Cases
+<a id="use-cases"></a>
+## 🎯 Use Cases
 
-### AI Development Team
+| Use Case | Agent Team | Goal |
+| --- | --- | --- |
+| 🛠️ AI Development Team | architect, developer, tester, deployer | Build and deploy a web application |
+| ✍️ Content Production | researcher, writer, editor, publisher | Research and publish a blog article |
+| 📊 Data Analysis | data collector, analyst, report generator | Analyze company data and produce insights |
 
-Agents:
+<a id="contributing"></a>
+## 🤝 Contributing
 
-- architect
-- developer
-- tester
-- deployer
-
-Task:
-
-Build and deploy a web application.
-
-### Content Production
-
-Agents:
-
-- researcher
-- writer
-- editor
-- publisher
-
-Task:
-
-Research and publish a blog article.
-
-### Data Analysis
-
-Agents:
-
-- data collector
-- analyst
-- report generator
-
-Task:
-
-Analyze company data and produce insights.
-
-## Contributing
-
-Contributions are welcome.
-
-You can contribute by:
+Contributions are welcome. You can help by:
 
 - creating new agents
 - building workflows
@@ -292,19 +251,20 @@ You can contribute by:
 - improving documentation
 - reporting bugs
 
-## License
+<a id="license"></a>
+## 📄 License
 
 Kovalsky is source-available software licensed under the
-Functional Source License (FSL-1.1-Apache-2.0).
+Functional Source License (`FSL-1.1-Apache-2.0`).
 
 You may use, modify, and self-host the software.
 
 Offering Kovalsky as a competing commercial hosted service is not permitted
-until two years after the version is released, at which point the code
-becomes available under the Apache License 2.0.
+until two years after the version is released, after which the code becomes
+available under the Apache License 2.0.
 
-## Community
+<a id="community"></a>
+## 🌍 Community
 
 Join discussions:
-
 [https://github.com/hiddenway/kovalsky/discussions](https://github.com/hiddenway/kovalsky/discussions)
