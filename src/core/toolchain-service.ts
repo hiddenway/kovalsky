@@ -100,6 +100,15 @@ export class ToolchainService {
       return managed;
     }
 
+    const bundled = this.getBundledBinaryPath(tool);
+    if (bundled) {
+      return bundled;
+    }
+
+    if (this.commandExists(trimmedCommand)) {
+      return trimmedCommand;
+    }
+
     return this.installTool(tool);
   }
 
@@ -299,6 +308,11 @@ export class ToolchainService {
       return overridePath;
     }
 
+    const bundledPnpm = this.getBundledExecutablePath("pnpm");
+    if (bundledPnpm) {
+      return bundledPnpm;
+    }
+
     if (this.commandExists("pnpm")) {
       return "pnpm";
     }
@@ -434,6 +448,29 @@ export class ToolchainService {
       };
     }
 
+    const bundled = this.getBundledBinaryPath(tool);
+    if (bundled) {
+      return {
+        tool,
+        command,
+        packageName,
+        status: "ready",
+        source: "local",
+        error: null,
+      };
+    }
+
+    if (this.commandExists(command)) {
+      return {
+        tool,
+        command,
+        packageName,
+        status: "ready",
+        source: "system",
+        error: null,
+      };
+    }
+
     if (stateFromInstall?.state === "installing") {
       return {
         tool,
@@ -468,6 +505,34 @@ export class ToolchainService {
 
   private resolvePackageName(tool: KnownTool): string {
     return process.env[PACKAGE_ENV_BY_TOOL[tool]]?.trim() || DEFAULT_PACKAGE_BY_TOOL[tool];
+  }
+
+  private getBundledBinaryPath(tool: KnownTool): string | null {
+    return this.getBundledExecutablePath(COMMAND_BY_TOOL[tool]);
+  }
+
+  private getBundledExecutablePath(commandName: string): string | null {
+    const binaryName = process.platform === "win32" ? `${commandName}.cmd` : commandName;
+    const argvScriptDir = path.dirname(process.argv[1] ?? "");
+    const resourcesPath = (process as NodeJS.Process & { resourcesPath?: string }).resourcesPath ?? "";
+    const candidates = [
+      path.join(process.cwd(), ".runtime-node_modules", ".bin", binaryName),
+      path.join(process.cwd(), "node_modules", ".bin", binaryName),
+      path.join(argvScriptDir, ".runtime-node_modules", ".bin", binaryName),
+      path.join(path.resolve(argvScriptDir, ".."), ".runtime-node_modules", ".bin", binaryName),
+      path.join(resourcesPath, "app", ".runtime-node_modules", ".bin", binaryName),
+      path.join(resourcesPath, ".runtime-node_modules", ".bin", binaryName),
+      path.join(resourcesPath, "app", "node_modules", ".bin", binaryName),
+      path.join(resourcesPath, "node_modules", ".bin", binaryName),
+    ];
+
+    for (const candidate of candidates) {
+      if (candidate && fs.existsSync(candidate)) {
+        return candidate;
+      }
+    }
+
+    return null;
   }
 
   private installTool(tool: KnownTool): Promise<string> {
