@@ -14,6 +14,7 @@ import type {
   PipelineGraphNode,
   ResolvedInputs,
   RunPlanData,
+  StepRunRecord,
   StepStatus,
 } from "../types";
 import { ProviderService } from "../providers/provider-service";
@@ -225,7 +226,7 @@ export class RunService {
       return false;
     }
 
-    if (run.status !== "queued" && run.status !== "running") {
+    if (run.status !== "queued" && run.status !== "running" && !this.hasInProgressStepRuns(runId)) {
       return false;
     }
 
@@ -515,7 +516,8 @@ export class RunService {
       }
 
       this.db.updateStepRunStatus(stepRun.id, "success", 0, null);
-      this.db.updateRunStatus(input.runId, "success", null);
+      const reconciledRun = this.reconcileRunStatusFromLatestSteps(input.runId);
+      this.db.updateRunStatus(input.runId, reconciledRun.status, reconciledRun.errorSummary);
       this.eventBus.emit({
         runId: input.runId,
         type: "step_status",
@@ -531,7 +533,8 @@ export class RunService {
         type: "run_status",
         at: new Date().toISOString(),
         payload: {
-          status: "success",
+          status: reconciledRun.status,
+          errorSummary: reconciledRun.errorSummary,
         },
       });
       this.createNodeMessage({
@@ -1575,6 +1578,58 @@ export class RunService {
       issues: [],
       isExecutable: true,
     };
+  }
+
+  private hasInProgressStepRuns(runId: string): boolean {
+    return this.db
+      .getStepRunsByRun(runId)
+      .some((step) => step.status === "pending" || step.status === "running");
+  }
+
+  private reconcileRunStatusFromLatestSteps(runId: string): {
+    status: "running" | "success" | "failed" | "canceled";
+    errorSummary: string | null;
+  } {
+    const stepRuns = this.db.getStepRunsByRun(runId);
+    if (stepRuns.length === 0) {
+      return { status: "success", errorSummary: null };
+    }
+
+    const latestByNode = new Map<string, StepRunRecord>();
+    for (const step of stepRuns) {
+      const current = latestByNode.get(step.node_id);
+      if (!current || this.isStepRunNewer(step, current)) {
+        latestByNode.set(step.node_id, step);
+      }
+    }
+
+    const latest = [...latestByNode.values()];
+    if (latest.some((step) => step.status === "pending" || step.status === "running")) {
+      return { status: "running", errorSummary: null };
+    }
+
+    const failed = latest.find((step) => step.status === "failed");
+    if (failed) {
+      return {
+        status: "failed",
+        errorSummary: failed.error_summary ?? "Step failed",
+      };
+    }
+
+    if (latest.every((step) => step.status === "canceled")) {
+      return { status: "canceled", errorSummary: "Run canceled by user" };
+    }
+
+    return { status: "success", errorSummary: null };
+  }
+
+  private isStepRunNewer(left: StepRunRecord, right: StepRunRecord): boolean {
+    const leftAt = left.started_at ?? left.finished_at ?? "";
+    const rightAt = right.started_at ?? right.finished_at ?? "";
+    if (leftAt === rightAt) {
+      return left.id.localeCompare(right.id) > 0;
+    }
+    return leftAt.localeCompare(rightAt) > 0;
   }
 
   private async markRunCanceled(runId: string, reason: string): Promise<void> {
