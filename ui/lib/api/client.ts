@@ -209,9 +209,6 @@ class RestKovalskyApiClient implements KovalskyApiClient {
   async cancelRun(runId: string) {
     const response = await this.fetchWithFallback(`/runs/${runId}/cancel`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
     });
 
     if (!response.ok) {
