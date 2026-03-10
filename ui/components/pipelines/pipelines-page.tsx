@@ -213,7 +213,7 @@ export function PipelinesPage(): React.JSX.Element {
 
   useEffect(() => {
     const prefs = loadPreferences();
-    const fromEnv = (process.env.NEXT_PUBLIC_KOVALSKI_BACKEND_URL ?? "").trim().replace(/\/api\/?$/i, "");
+    const fromEnv = (process.env.NEXT_PUBLIC_KOVALSKY_BACKEND_URL ?? "").trim().replace(/\/api\/?$/i, "");
     const isDesktop = typeof (window as DirectoryPickerWindow).kovalskyDesktop?.pickWorkspaceDirectory === "function";
     const preferredBaseUrl = (
       isDesktop

@@ -15,7 +15,7 @@ const ibmPlexMono = IBM_Plex_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Kovalski",
+  title: "Kovalsky",
   description: "Goal-driven workflow canvas for AI agents",
 };
 

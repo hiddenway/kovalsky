@@ -126,7 +126,7 @@ export function SettingsPage(): React.JSX.Element {
 
   useEffect(() => {
     const prefs = loadPreferences();
-    const fromEnv = (process.env.NEXT_PUBLIC_KOVALSKI_BACKEND_URL ?? "").trim().replace(/\/api\/?$/i, "");
+    const fromEnv = (process.env.NEXT_PUBLIC_KOVALSKY_BACKEND_URL ?? "").trim().replace(/\/api\/?$/i, "");
     const preferredBaseUrl = (prefs.baseUrl.trim() || fromEnv || "http://127.0.0.1:8787").replace(/\/api\/?$/i, "");
     const fallbackBaseUrl = "http://127.0.0.1:8787";
     const candidates = Array.from(new Set([preferredBaseUrl, fromEnv, fallbackBaseUrl].filter(Boolean)));

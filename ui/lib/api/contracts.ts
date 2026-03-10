@@ -114,7 +114,7 @@ export type GatewaySettingsPatch = {
   };
 };
 
-export interface KovalskiApiClient {
+export interface KovalskyApiClient {
   getAgents(): Promise<AgentDefinition[]>;
   createPipeline(pipeline: Pipeline): Promise<{ pipelineId: string }>;
   getPipeline(id: string): Promise<GatewayPipelineResponse | null>;

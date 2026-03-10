@@ -166,7 +166,7 @@ async function startServices() {
       PATH: sharedPath,
       PORT: String(UI_PORT),
       HOSTNAME: UI_HOST,
-      NEXT_PUBLIC_KOVALSKI_BACKEND_URL: `http://${API_HOST}:${API_PORT}`,
+      NEXT_PUBLIC_KOVALSKY_BACKEND_URL: `http://${API_HOST}:${API_PORT}`,
       KOVALSKY_APPDATA_DIR: appDataDir(),
       NEXT_TELEMETRY_DISABLED: "1",
     },

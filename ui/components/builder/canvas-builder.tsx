@@ -636,7 +636,7 @@ function CanvasBuilderInner(): React.JSX.Element {
         return;
       }
 
-      const agentId = event.dataTransfer.getData("application/kovalski-agent");
+      const agentId = event.dataTransfer.getData("application/kovalsky-agent");
       if (!agentId) {
         return;
       }

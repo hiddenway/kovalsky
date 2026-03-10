@@ -1,5 +1,5 @@
 import { getSupportedAgents } from "@/lib/agents";
-import type { CreateRunRequest, GatewayPipelineGraph, GatewaySettingsPatch, KovalskiApiClient } from "@/lib/api/contracts";
+import type { CreateRunRequest, GatewayPipelineGraph, GatewaySettingsPatch, KovalskyApiClient } from "@/lib/api/contracts";
 import { loadPreferences } from "@/lib/local-state";
 import type { Pipeline } from "@/lib/types";
 
@@ -20,7 +20,7 @@ function toGatewayGraph(pipeline: Pipeline): GatewayPipelineGraph {
   };
 }
 
-class RestKovalskiApiClient implements KovalskiApiClient {
+class RestKovalskyApiClient implements KovalskyApiClient {
   private tokenPromise: Promise<string> | null = null;
 
   constructor(
@@ -114,7 +114,7 @@ class RestKovalskiApiClient implements KovalskiApiClient {
       await this.throwHttpError(response, "Failed to load agents");
     }
 
-    const raw = (await response.json()) as Awaited<ReturnType<KovalskiApiClient["getAgents"]>>;
+    const raw = (await response.json()) as Awaited<ReturnType<KovalskyApiClient["getAgents"]>>;
     return getSupportedAgents(raw);
   }
 
@@ -151,7 +151,7 @@ class RestKovalskiApiClient implements KovalskiApiClient {
       await this.throwHttpError(response, "Failed to load workflow");
     }
 
-    return (await response.json()) as Awaited<ReturnType<KovalskiApiClient["getPipeline"]>>;
+    return (await response.json()) as Awaited<ReturnType<KovalskyApiClient["getPipeline"]>>;
   }
 
   async updatePipeline(pipeline: Pipeline) {
@@ -203,7 +203,7 @@ class RestKovalskiApiClient implements KovalskiApiClient {
       await this.throwHttpError(response, "Failed to load run");
     }
 
-    return (await response.json()) as Awaited<ReturnType<KovalskiApiClient["getRun"]>>;
+    return (await response.json()) as Awaited<ReturnType<KovalskyApiClient["getRun"]>>;
   }
 
   async cancelRun(runId: string) {
@@ -244,7 +244,7 @@ class RestKovalskiApiClient implements KovalskiApiClient {
       await this.throwHttpError(response, "Failed to load artifact preview");
     }
 
-    return (await response.json()) as Awaited<ReturnType<KovalskiApiClient["getArtifactPreview"]>>;
+    return (await response.json()) as Awaited<ReturnType<KovalskyApiClient["getArtifactPreview"]>>;
   }
 
   async getNodeChat(runId: string, nodeId: string) {
@@ -257,7 +257,7 @@ class RestKovalskiApiClient implements KovalskiApiClient {
       await this.throwHttpError(response, "Failed to load node chat");
     }
 
-    return (await response.json()) as Awaited<ReturnType<KovalskiApiClient["getNodeChat"]>>;
+    return (await response.json()) as Awaited<ReturnType<KovalskyApiClient["getNodeChat"]>>;
   }
 
   async appendNodeChat(
@@ -277,7 +277,7 @@ class RestKovalskiApiClient implements KovalskiApiClient {
       await this.throwHttpError(response, "Failed to append node chat");
     }
 
-    return (await response.json()) as Awaited<ReturnType<KovalskiApiClient["appendNodeChat"]>>;
+    return (await response.json()) as Awaited<ReturnType<KovalskyApiClient["appendNodeChat"]>>;
   }
 
   async replyNodeChat(
@@ -300,7 +300,7 @@ class RestKovalskiApiClient implements KovalskiApiClient {
       await this.throwHttpError(response, "Failed to generate node chat reply");
     }
 
-    return (await response.json()) as Awaited<ReturnType<KovalskiApiClient["replyNodeChat"]>>;
+    return (await response.json()) as Awaited<ReturnType<KovalskyApiClient["replyNodeChat"]>>;
   }
 
   async listProviders() {
@@ -313,7 +313,7 @@ class RestKovalskiApiClient implements KovalskiApiClient {
       await this.throwHttpError(response, "Failed to load providers");
     }
 
-    return (await response.json()) as Awaited<ReturnType<KovalskiApiClient["listProviders"]>>;
+    return (await response.json()) as Awaited<ReturnType<KovalskyApiClient["listProviders"]>>;
   }
 
   async connectProvider(input: {
@@ -334,7 +334,7 @@ class RestKovalskiApiClient implements KovalskiApiClient {
       await this.throwHttpError(response, "Failed to connect provider");
     }
 
-    return (await response.json()) as Awaited<ReturnType<KovalskiApiClient["connectProvider"]>>;
+    return (await response.json()) as Awaited<ReturnType<KovalskyApiClient["connectProvider"]>>;
   }
 
   async deleteProvider(credentialId: string) {
@@ -349,7 +349,7 @@ class RestKovalskiApiClient implements KovalskiApiClient {
       await this.throwHttpError(response, "Failed to delete provider");
     }
 
-    return (await response.json()) as Awaited<ReturnType<KovalskiApiClient["deleteProvider"]>>;
+    return (await response.json()) as Awaited<ReturnType<KovalskyApiClient["deleteProvider"]>>;
   }
 
   async getProviderOAuthUrl(provider: "codex" | "openclaw") {
@@ -362,7 +362,7 @@ class RestKovalskiApiClient implements KovalskiApiClient {
       await this.throwHttpError(response, "Failed to load provider OAuth URL");
     }
 
-    return (await response.json()) as Awaited<ReturnType<KovalskiApiClient["getProviderOAuthUrl"]>>;
+    return (await response.json()) as Awaited<ReturnType<KovalskyApiClient["getProviderOAuthUrl"]>>;
   }
 
   async getToolchainBootstrapStatus() {
@@ -375,7 +375,7 @@ class RestKovalskiApiClient implements KovalskiApiClient {
       await this.throwHttpError(response, "Failed to load toolchain status");
     }
 
-    return (await response.json()) as Awaited<ReturnType<KovalskiApiClient["getToolchainBootstrapStatus"]>>;
+    return (await response.json()) as Awaited<ReturnType<KovalskyApiClient["getToolchainBootstrapStatus"]>>;
   }
 
   async installRequiredAgents() {
@@ -391,7 +391,7 @@ class RestKovalskiApiClient implements KovalskiApiClient {
       await this.throwHttpError(response, "Failed to start required agents install");
     }
 
-    return (await response.json()) as Awaited<ReturnType<KovalskiApiClient["installRequiredAgents"]>>;
+    return (await response.json()) as Awaited<ReturnType<KovalskyApiClient["installRequiredAgents"]>>;
   }
 
   async startCodexLogin() {
@@ -407,7 +407,7 @@ class RestKovalskiApiClient implements KovalskiApiClient {
       await this.throwHttpError(response, "Failed to start Codex login");
     }
 
-    return (await response.json()) as Awaited<ReturnType<KovalskiApiClient["startCodexLogin"]>>;
+    return (await response.json()) as Awaited<ReturnType<KovalskyApiClient["startCodexLogin"]>>;
   }
 
   async getCodexAuthStatus() {
@@ -420,7 +420,7 @@ class RestKovalskiApiClient implements KovalskiApiClient {
       await this.throwHttpError(response, "Failed to load Codex auth status");
     }
 
-    return (await response.json()) as Awaited<ReturnType<KovalskiApiClient["getCodexAuthStatus"]>>;
+    return (await response.json()) as Awaited<ReturnType<KovalskyApiClient["getCodexAuthStatus"]>>;
   }
 
   async getSettings() {
@@ -433,7 +433,7 @@ class RestKovalskiApiClient implements KovalskiApiClient {
       await this.throwHttpError(response, "Failed to load settings");
     }
 
-    return (await response.json()) as Awaited<ReturnType<KovalskiApiClient["getSettings"]>>;
+    return (await response.json()) as Awaited<ReturnType<KovalskyApiClient["getSettings"]>>;
   }
 
   async updateSettings(input: GatewaySettingsPatch) {
@@ -449,29 +449,29 @@ class RestKovalskiApiClient implements KovalskiApiClient {
       await this.throwHttpError(response, "Failed to update settings");
     }
 
-    return (await response.json()) as Awaited<ReturnType<KovalskiApiClient["updateSettings"]>>;
+    return (await response.json()) as Awaited<ReturnType<KovalskyApiClient["updateSettings"]>>;
   }
 }
 
-let sharedClient: KovalskiApiClient | null = null;
+let sharedClient: KovalskyApiClient | null = null;
 
 export function resetApiClient(): void {
   sharedClient = null;
 }
 
-export function getApiClient(): KovalskiApiClient {
+export function getApiClient(): KovalskyApiClient {
   if (sharedClient) {
     return sharedClient;
   }
 
-  const fromEnv = process.env.NEXT_PUBLIC_KOVALSKI_BACKEND_URL?.trim();
+  const fromEnv = process.env.NEXT_PUBLIC_KOVALSKY_BACKEND_URL?.trim();
   const prefs = typeof window !== "undefined" ? loadPreferences() : null;
   const fromPrefs = prefs?.baseUrl.trim() ?? "";
   const tokenFromPrefs = prefs?.token.trim() ?? "";
-  const tokenFromEnv = process.env.NEXT_PUBLIC_KOVALSKI_PAIRING_TOKEN?.trim() ?? "";
+  const tokenFromEnv = process.env.NEXT_PUBLIC_KOVALSKY_PAIRING_TOKEN?.trim() ?? "";
   const backendUrl = (fromPrefs || fromEnv || "http://127.0.0.1:8787").replace(/\/api\/?$/i, "");
   const pairingToken = tokenFromEnv || tokenFromPrefs;
 
-  sharedClient = new RestKovalskiApiClient(backendUrl, pairingToken);
+  sharedClient = new RestKovalskyApiClient(backendUrl, pairingToken);
   return sharedClient;
 }

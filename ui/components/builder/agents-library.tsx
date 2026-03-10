@@ -22,7 +22,7 @@ export function AgentsLibrary({ agents, onAddAgent }: Props): React.JSX.Element 
             key={agent.id}
             draggable
             onDragStart={(event) => {
-              event.dataTransfer.setData("application/kovalski-agent", agent.id);
+              event.dataTransfer.setData("application/kovalsky-agent", agent.id);
               event.dataTransfer.effectAllowed = "move";
             }}
             className="rounded-lg border border-zinc-800 bg-zinc-900/80 p-3"
