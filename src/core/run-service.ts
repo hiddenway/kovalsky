@@ -354,8 +354,8 @@ export class RunService {
           role: "system",
           phase: "run",
           content: startedRunId
-            ? `Запущен новый прогон полного workflow: ${startedRunId}`
-            : `Не удалось запустить полный workflow: ${pipelineRerunError ?? "unknown error"}`,
+            ? `Started a new workflow rerun: ${startedRunId}`
+            : `Failed to start a new workflow rerun: ${pipelineRerunError ?? "unknown error"}`,
           meta: {
             source: "chat_followup_rerun_status",
             rerunMode,
@@ -365,8 +365,8 @@ export class RunService {
         });
       } else {
         const content = nodeRerunLaunch === "already_running"
-          ? "Повторный прогон этой ноды уже выполняется. Дождись завершения текущего rerun."
-          : "Запускаю повторный прогон этой ноды с учётом твоего сообщения.";
+          ? "A rerun of this node is already in progress. Please wait for it to finish."
+          : "Starting a rerun of this node based on your message.";
         this.createNodeMessage({
           runId: input.runId,
           nodeId: input.nodeId,
