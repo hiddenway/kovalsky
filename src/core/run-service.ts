@@ -327,6 +327,16 @@ export class RunService {
           nodeId: input.nodeId,
           prompt,
         });
+        if (nodeRerunLaunch === "run_canceled") {
+          const followupRun = await this.executeFollowupPipelineRun({
+            runId: input.runId,
+            nodeId: input.nodeId,
+            prompt,
+            announce: false,
+          });
+          startedRunId = followupRun.startedRunId ?? null;
+          pipelineRerunError = followupRun.error ?? null;
+        }
       }
     }
 
@@ -336,7 +346,9 @@ export class RunService {
           ? `${followup.reply}\n\nЗапустил новый прогон полного workflow: ${startedRunId}`
           : `${followup.reply}\n\nНе удалось запустить полный workflow: ${pipelineRerunError ?? "unknown error"}`
         : nodeRerunLaunch === "run_canceled"
-          ? `${followup.reply}\n\nПовторный прогон не запущен: run уже отменён.`
+          ? startedRunId
+            ? `${followup.reply}\n\nТекущий run уже отменён, поэтому запустил новый прогон workflow: ${startedRunId}`
+            : `${followup.reply}\n\nТекущий run уже отменён, но не удалось запустить новый workflow: ${pipelineRerunError ?? "unknown error"}`
         : nodeRerunLaunch === "already_running"
           ? `${followup.reply}\n\nПовторный прогон этой ноды уже выполняется. Дождись завершения текущего rerun.`
           : `${followup.reply}\n\nЗапускаю повторный прогон этой ноды с учётом твоего сообщения.`
