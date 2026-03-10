@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { getAgentById, getAgentSettingFields, type AgentSettingField } from "@/lib/agents";
 import { getApiClient } from "@/lib/api/client";
 import type { PipelineNodeData, ReactFlowEdge, ReactFlowNode } from "@/lib/types";
@@ -186,6 +186,14 @@ export function InspectorPanel({
   const chatBottomRef = useRef<HTMLDivElement | null>(null);
   const chatInitializedForNodeRef = useRef<string | null>(null);
   const externalRunSeenRef = useRef<Set<string>>(new Set());
+  const announceExternalRun = useCallback((runId: string): void => {
+    const normalized = runId.trim();
+    if (!normalized || externalRunSeenRef.current.has(normalized)) {
+      return;
+    }
+    externalRunSeenRef.current.add(normalized);
+    onExternalRunStarted?.(normalized);
+  }, [onExternalRunStarted]);
   const scrollChatToBottom = (): void => {
     const frame = window.requestAnimationFrame(() => {
       chatBottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
@@ -227,16 +235,18 @@ export function InspectorPanel({
             continue;
           }
           try {
-            const meta = JSON.parse(message.meta_json) as { startedRunId?: unknown };
-            if (typeof meta.startedRunId !== "string") {
+            const meta = JSON.parse(message.meta_json) as {
+              startedRunId?: unknown;
+              rerunDecision?: unknown;
+              rerunMode?: unknown;
+            };
+            if (typeof meta.startedRunId === "string" && meta.startedRunId.trim()) {
+              announceExternalRun(meta.startedRunId);
               continue;
             }
-            const startedRunId = meta.startedRunId.trim();
-            if (!startedRunId || externalRunSeenRef.current.has(startedRunId)) {
-              continue;
+            if (meta.rerunDecision === "rerun" && meta.rerunMode === "node" && activeRunId) {
+              announceExternalRun(activeRunId);
             }
-            externalRunSeenRef.current.add(startedRunId);
-            onExternalRunStarted?.(startedRunId);
           } catch {
             continue;
           }
@@ -286,7 +296,7 @@ export function InspectorPanel({
       disposed = true;
       window.clearInterval(timer);
     };
-  }, [activeRunId, selectedNodeId, showHandoff, selectedNode, onExternalRunStarted]);
+  }, [activeRunId, selectedNodeId, showHandoff, selectedNode, announceExternalRun]);
 
   if (selectedNode) {
     const definition = getAgentById(selectedNode.data.agentId);
@@ -418,9 +428,15 @@ export function InspectorPanel({
 
                     if (payload.message.meta_json) {
                       try {
-                        const meta = JSON.parse(payload.message.meta_json) as { startedRunId?: unknown };
+                        const meta = JSON.parse(payload.message.meta_json) as {
+                          startedRunId?: unknown;
+                          rerunDecision?: unknown;
+                          rerunMode?: unknown;
+                        };
                         if (typeof meta.startedRunId === "string" && meta.startedRunId.trim()) {
-                          onExternalRunStarted?.(meta.startedRunId.trim());
+                          announceExternalRun(meta.startedRunId);
+                        } else if (meta.rerunDecision === "rerun" && meta.rerunMode === "node") {
+                          announceExternalRun(activeRunId);
                         }
                       } catch {
                         // ignore malformed meta
