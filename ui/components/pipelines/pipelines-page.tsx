@@ -182,20 +182,20 @@ export function PipelinesPage(): React.JSX.Element {
     window.location.href = `/builder?pipelineId=${pipelineId}`;
   };
 
-  const connectGateway = async (baseUrl: string, persistOnSuccess: boolean): Promise<boolean> => {
+  const connectGateway = async (baseUrl: string): Promise<boolean> => {
     setGatewayStatus("checking");
     setGatewayMessage("Checking gateway connection...");
 
     try {
       await ensureGatewayAvailable(baseUrl);
 
-      if (persistOnSuccess) {
-        const currentPrefs = loadPreferences();
-        savePreferences({
-          ...currentPrefs,
-          baseUrl,
-        });
-      }
+      // Keep API client and detected gateway in sync.
+      // Without persisting detected URL, a stale saved URL can cause "Failed to fetch".
+      const currentPrefs = loadPreferences();
+      savePreferences({
+        ...currentPrefs,
+        baseUrl,
+      });
 
       resetApiClient();
       setGatewayStatus("connected");
@@ -210,7 +210,7 @@ export function PipelinesPage(): React.JSX.Element {
 
   const submitGatewayTarget = async (): Promise<void> => {
     const baseUrl = buildGatewayBaseUrl(gatewayHost, gatewayPort);
-    await connectGateway(baseUrl, true);
+    await connectGateway(baseUrl);
   };
 
   useEffect(() => {
@@ -233,7 +233,7 @@ export function PipelinesPage(): React.JSX.Element {
 
     void (async () => {
       for (const candidate of candidates) {
-        const ok = await connectGateway(candidate, false);
+        const ok = await connectGateway(candidate);
         if (ok) {
           const parsed = parseGatewayBaseUrl(candidate);
           setGatewayHost(parsed.host);
@@ -691,7 +691,7 @@ export function PipelinesPage(): React.JSX.Element {
                   type="button"
                   className="rounded-md border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-sm text-zinc-300 hover:bg-zinc-800"
                   onClick={() => {
-                    void connectGateway(buildGatewayBaseUrl(gatewayHost, gatewayPort), false);
+                    void connectGateway(buildGatewayBaseUrl(gatewayHost, gatewayPort));
                   }}
                 >
                   Retry
