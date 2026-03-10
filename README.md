@@ -16,6 +16,10 @@ Instead of interacting with a single AI assistant, Kovalsky allows you to manage
 
 </p>
 
+## Pipeline Builder UI
+
+![Pipeline Builder UI](./docs/images/pipeline-builder.png)
+
 ## The Idea
 
 Most AI tools work like this:
