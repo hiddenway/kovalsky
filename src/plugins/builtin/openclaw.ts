@@ -229,9 +229,76 @@ function collectWorkspaceLaunchHints(ctx: StepExecutionContext): string[] {
   }
 }
 
+function shouldAllowServerStopActions(ctx: StepExecutionContext): boolean {
+  const text = [
+    ctx.goal,
+    ctx.plannedNode.goalAddendum ?? "",
+    ctx.plannedNode.handoffContext ?? "",
+  ]
+    .join(" ")
+    .toLowerCase();
+
+  const keywords = [
+    "stop server",
+    "shutdown server",
+    "shut down server",
+    "terminate server",
+    "disable server",
+    "close server",
+    "free port",
+    "release port",
+    "останови сервер",
+    "остановить сервер",
+    "отключи сервер",
+    "отключить сервер",
+    "выключи сервер",
+    "выключить сервер",
+    "закрой сервер",
+    "закрыть сервер",
+    "освободи порт",
+    "освободить порт",
+  ];
+
+  return keywords.some((keyword) => text.includes(keyword));
+}
+
+function shouldRequireBrowserChecks(ctx: StepExecutionContext): boolean {
+  const text = [
+    ctx.goal,
+    ctx.plannedNode.goalAddendum ?? "",
+    ctx.plannedNode.handoffContext ?? "",
+  ]
+    .join(" ")
+    .toLowerCase();
+
+  const browserKeywords = [
+    "browser",
+    "playwright",
+    "blackbox",
+    "visual",
+    "ui check",
+    "ui test",
+    "frontend qa",
+    "page check",
+    "open in browser",
+    "manual qa",
+    "e2e",
+    "end-to-end",
+    "проверь в браузере",
+    "проверка в браузере",
+    "визуально проверь",
+    "ui-проверка",
+    "ui проверка",
+  ];
+
+  return browserKeywords.some((keyword) => text.includes(keyword));
+}
+
 function buildAgentMessage(ctx: StepExecutionContext): string {
   const lines: string[] = [];
   const persistBackgroundProcesses = ctx.settings.persistBackgroundProcesses === true;
+  const allowServerStopActions = shouldAllowServerStopActions(ctx);
+  const requireBrowserChecks = shouldRequireBrowserChecks(ctx);
   if (ctx.goal.trim()) {
     lines.push(ctx.goal.trim());
   }
@@ -277,11 +344,22 @@ function buildAgentMessage(ctx: StepExecutionContext): string {
   } else {
     lines.push("Execution is isolated per step. Do not rely on processes from previous steps.");
   }
-  lines.push("Do not stop or kill existing processes in workspace. Never run pkill/killall/kill on dev servers.");
-  lines.push("If an existing app URL is already reachable, reuse it and skip starting a new server.");
-  lines.push("If you must start a server, use a separate port and leave existing ports/processes untouched.");
-  lines.push("If local app needs to run, start it in this step and verify URL is reachable before browser checks.");
-  lines.push("Run browser blackbox checks and finish in one response with summary, issues, reproduction, severity.");
+  if (allowServerStopActions) {
+    lines.push("User explicitly asked to stop server/background services.");
+    lines.push("Stop only the target process for this workspace/port using precise PID/port-based commands.");
+    lines.push("Never run broad kill commands (killall/pkill without explicit PID/port filter).");
+    lines.push("Confirm shutdown by proving the previous local URL/port no longer responds.");
+  } else {
+    lines.push("Do not stop or kill existing processes in workspace. Never run pkill/killall/kill on dev servers.");
+    lines.push("If an existing app URL is already reachable, reuse it and skip starting a new server.");
+    lines.push("If you must start a server, use a separate port and leave existing ports/processes untouched.");
+    lines.push("If local app needs to run, start it in this step and verify URL is reachable with lightweight checks (curl/lsof) before browser checks.");
+  }
+  if (requireBrowserChecks) {
+    lines.push("Run browser blackbox checks and finish in one response with summary, issues, reproduction, severity.");
+  } else {
+    lines.push("Do not launch interactive browser sessions unless the task explicitly asks for browser/UI checks.");
+  }
   return lines.join("\n");
 }
 
