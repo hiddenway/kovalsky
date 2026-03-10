@@ -136,8 +136,7 @@ export class AgentHost {
       "starting step command",
     );
 
-    const persistBackgroundProcesses = params.context.settings.persistBackgroundProcesses === true;
-    const openclawCompletion = params.agentId === "openclaw" && !persistBackgroundProcesses
+    const openclawCompletion = params.agentId === "openclaw"
       ? createOpenClawCompletionDetector()
       : null;
 
