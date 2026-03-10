@@ -41,6 +41,7 @@ export interface StartRunOverrides {
 
 type FollowupRerunDecision = "rerun" | "no_rerun" | "unknown";
 type NodeChatContextMode = "off" | "light" | "strict";
+type NodeFollowupRerunLaunch = "started" | "already_running";
 
 interface FollowupReplyResult {
   reply: string;
@@ -49,6 +50,7 @@ interface FollowupReplyResult {
 
 export class RunService {
   private readonly controls = new Map<string, ActiveRunControl>();
+  private readonly activeNodeFollowupReruns = new Set<string>();
   private readonly db: DatabaseService;
   private readonly graphExecutor: GraphExecutor;
   private readonly agentHost: AgentHost;
@@ -305,18 +307,27 @@ export class RunService {
     });
     const shouldLaunchFollowup = followup.decision === "rerun";
     const rerunMode = input.rerunMode === "pipeline" ? "pipeline" : "node";
+    let nodeRerunLaunch: NodeFollowupRerunLaunch | null = null;
     let startedRunId: string | null = null;
     let pipelineRerunError: string | null = null;
 
-    if (shouldLaunchFollowup && rerunMode === "pipeline") {
-      const followupRun = await this.executeFollowupPipelineRun({
-        runId: input.runId,
-        nodeId: input.nodeId,
-        prompt,
-        announce: false,
-      });
-      startedRunId = followupRun.startedRunId ?? null;
-      pipelineRerunError = followupRun.error ?? null;
+    if (shouldLaunchFollowup) {
+      if (rerunMode === "pipeline") {
+        const followupRun = await this.executeFollowupPipelineRun({
+          runId: input.runId,
+          nodeId: input.nodeId,
+          prompt,
+          announce: false,
+        });
+        startedRunId = followupRun.startedRunId ?? null;
+        pipelineRerunError = followupRun.error ?? null;
+      } else {
+        nodeRerunLaunch = this.startFollowupNodeRunIfIdle({
+          runId: input.runId,
+          nodeId: input.nodeId,
+          prompt,
+        });
+      }
     }
 
     const finalAgentReply = shouldLaunchFollowup
@@ -324,7 +335,9 @@ export class RunService {
           ? startedRunId
           ? `${followup.reply}\n\nЗапустил новый прогон полного workflow: ${startedRunId}`
           : `${followup.reply}\n\nНе удалось запустить полный workflow: ${pipelineRerunError ?? "unknown error"}`
-        : `${followup.reply}\n\nЗапускаю повторный прогон этой ноды с учётом твоего сообщения.`
+        : nodeRerunLaunch === "already_running"
+          ? `${followup.reply}\n\nПовторный прогон этой ноды уже выполняется. Дождись завершения текущего rerun.`
+          : `${followup.reply}\n\nЗапускаю повторный прогон этой ноды с учётом твоего сообщения.`
       : followup.reply;
 
     const agentMessage = this.createNodeMessage({
@@ -339,20 +352,38 @@ export class RunService {
         rerunMode,
         startedRunId: startedRunId ?? undefined,
         rerunError: pipelineRerunError ?? undefined,
+        nodeRerunLaunch: nodeRerunLaunch ?? undefined,
       },
     });
 
-    if (shouldLaunchFollowup) {
-      if (rerunMode === "node") {
-        void this.executeFollowupNodeRun({
-          runId: input.runId,
-          nodeId: input.nodeId,
-          prompt,
-        });
-      }
+    return { userMessage, agentMessage };
+  }
+
+  private startFollowupNodeRunIfIdle(input: {
+    runId: string;
+    nodeId: string;
+    prompt: string;
+  }): NodeFollowupRerunLaunch {
+    const key = this.buildNodeFollowupRerunKey(input.runId, input.nodeId);
+    if (this.activeNodeFollowupReruns.has(key) || this.hasNodeFollowupRerunInProgress(input.runId, input.nodeId)) {
+      return "already_running";
     }
 
-    return { userMessage, agentMessage };
+    this.activeNodeFollowupReruns.add(key);
+    void this.executeFollowupNodeRun(input).finally(() => {
+      this.activeNodeFollowupReruns.delete(key);
+    });
+    return "started";
+  }
+
+  private buildNodeFollowupRerunKey(runId: string, nodeId: string): string {
+    return `${runId}:${nodeId}`;
+  }
+
+  private hasNodeFollowupRerunInProgress(runId: string, nodeId: string): boolean {
+    return this.db
+      .getStepRunsByRun(runId)
+      .some((step) => step.node_id === nodeId && (step.status === "pending" || step.status === "running"));
   }
 
   private async executeFollowupNodeRun(input: {
