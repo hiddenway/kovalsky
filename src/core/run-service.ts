@@ -512,12 +512,17 @@ export class RunService {
     this.artifactStore.ensureStepDirs(input.runId, stepRun.id);
     const stepDir = this.artifactStore.getStepDir(input.runId, stepRun.id);
     const stepLogPath = this.artifactStore.getStepLogPath(input.runId, stepRun.id);
-    const effectiveGoal = [
+    const nodeMessages = this.getPipelineNodeMessages(input.runId, input.nodeId);
+    const chatContextMode = this.resolveNodeChatContextMode(node.settings);
+    const recentChatContext = chatContextMode === "off"
+      ? ""
+      : this.buildPipelineChatContextSnippet(nodeMessages, chatContextMode);
+    const effectiveGoal = this.buildNodeGoalWithChatContext(
       (node.goal ?? "").trim(),
-      `Follow-up request from chat:\n${input.prompt.trim()}`,
-    ]
-      .filter(Boolean)
-      .join("\n\n");
+      recentChatContext,
+      input.prompt,
+      chatContextMode,
+    );
 
     try {
       const result = await this.agentHost.runStep({
