@@ -330,22 +330,12 @@ export class RunService {
       }
     }
 
-    const finalAgentReply = shouldLaunchFollowup
-        ? rerunMode === "pipeline"
-          ? startedRunId
-          ? `${followup.reply}\n\nЗапустил новый прогон полного workflow: ${startedRunId}`
-          : `${followup.reply}\n\nНе удалось запустить полный workflow: ${pipelineRerunError ?? "unknown error"}`
-        : nodeRerunLaunch === "already_running"
-          ? `${followup.reply}\n\nПовторный прогон этой ноды уже выполняется. Дождись завершения текущего rerun.`
-          : `${followup.reply}\n\nЗапускаю повторный прогон этой ноды с учётом твоего сообщения.`
-      : followup.reply;
-
     const agentMessage = this.createNodeMessage({
       runId: input.runId,
       nodeId: input.nodeId,
       role: "agent",
       phase: "run",
-      content: finalAgentReply,
+      content: followup.reply,
       meta: {
         source: "chat_followup_report",
         rerunDecision: followup.decision,
@@ -355,6 +345,42 @@ export class RunService {
         nodeRerunLaunch: nodeRerunLaunch ?? undefined,
       },
     });
+
+    if (shouldLaunchFollowup) {
+      if (rerunMode === "pipeline") {
+        this.createNodeMessage({
+          runId: input.runId,
+          nodeId: input.nodeId,
+          role: "system",
+          phase: "run",
+          content: startedRunId
+            ? `Запущен новый прогон полного workflow: ${startedRunId}`
+            : `Не удалось запустить полный workflow: ${pipelineRerunError ?? "unknown error"}`,
+          meta: {
+            source: "chat_followup_rerun_status",
+            rerunMode,
+            startedRunId: startedRunId ?? undefined,
+            rerunError: pipelineRerunError ?? undefined,
+          },
+        });
+      } else {
+        const content = nodeRerunLaunch === "already_running"
+          ? "Повторный прогон этой ноды уже выполняется. Дождись завершения текущего rerun."
+          : "Запускаю повторный прогон этой ноды с учётом твоего сообщения.";
+        this.createNodeMessage({
+          runId: input.runId,
+          nodeId: input.nodeId,
+          role: "system",
+          phase: "run",
+          content,
+          meta: {
+            source: "chat_followup_rerun_status",
+            rerunMode,
+            nodeRerunLaunch: nodeRerunLaunch ?? undefined,
+          },
+        });
+      }
+    }
 
     return { userMessage, agentMessage };
   }

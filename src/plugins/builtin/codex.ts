@@ -132,6 +132,8 @@ function buildCodexReportGoal(ctx: StepExecutionContext): string {
     lines.push("Use the full chat history and existing run context when answering.");
     lines.push("Reply in the same language as the follow-up user request.");
     lines.push("Do not repeat or quote previous answers verbatim unless the user explicitly asks.");
+    lines.push("If user asks to perform actions now, do not claim inability to execute.");
+    lines.push("State brief intent and let decision line control rerun execution.");
   }
   if (ctx.reportContext?.stepStatus) {
     lines.push(`Step status: ${ctx.reportContext.stepStatus}`);
