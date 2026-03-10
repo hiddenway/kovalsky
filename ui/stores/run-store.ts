@@ -137,7 +137,6 @@ async function mapSnapshotToRecord(
       );
 
       const status = toStepStatus(stepRun.status);
-      const suffix = isRerun && (status === "pending" || status === "running") ? " (rerun)" : "";
       return {
         stepId,
         agentId: stepRun.agent_id,
@@ -153,10 +152,10 @@ async function mapSnapshotToRecord(
             : status === "failed"
               ? "Execution failed"
               : status === "running"
-                ? `Executing${suffix}`
+                ? "Executing"
                 : status === "canceled"
                   ? "Canceled"
-                  : `Waiting${suffix}`),
+                  : "Waiting"),
       } satisfies StepRun;
     }),
   );

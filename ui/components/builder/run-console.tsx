@@ -71,9 +71,7 @@ export function RunConsole({ run, expanded, onToggleExpanded, onCancel }: Props)
                   <li key={step.stepId} className="flex items-center justify-between rounded border border-zinc-800 bg-zinc-900/70 px-2 py-1">
                     <span className="truncate text-zinc-200">{step.stepId}</span>
                     <span className="text-xs text-zinc-400">
-                      {step.rerun && (step.status === "pending" || step.status === "running")
-                        ? `${step.status} (rerun)`
-                        : step.status}
+                      {step.status}
                     </span>
                   </li>
                 ))}

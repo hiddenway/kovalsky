@@ -338,9 +338,7 @@ function CanvasBuilderInner(): React.JSX.Element {
           data: {
             ...node.data,
             runtimeStatus: step.status,
-            runtimeStatusLabel: step.rerun && (step.status === "pending" || step.status === "running")
-              ? `${step.status} (rerun)`
-              : undefined,
+            runtimeStatusLabel: undefined,
             handoff: {
               status: step.status,
               summary: step.summary ?? "No summary yet.",
