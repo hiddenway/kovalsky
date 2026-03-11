@@ -44,6 +44,39 @@ export class ProcessManager {
     }
   }
 
+  private resolveBinWrapperEntrypoint(command: string): string | null {
+    if (!command || !fs.existsSync(command)) {
+      return null;
+    }
+
+    const normalizedCommand = command.replace(/\\/g, "/");
+    if (!normalizedCommand.includes("/.bin/")) {
+      return null;
+    }
+
+    let source = "";
+    try {
+      source = fs.readFileSync(command, "utf8");
+    } catch {
+      return null;
+    }
+
+    const unixMatch = source.match(/\$basedir\/(\.\.\/[^\s"'`]+?\.(?:cjs|mjs|js))/);
+    const windowsMatch = source.match(/%~dp0\\([^"\r\n]+?\.(?:cjs|mjs|js))/i);
+    const relativeEntrypoint = (unixMatch?.[1] ?? windowsMatch?.[1] ?? "").trim();
+    if (!relativeEntrypoint) {
+      return null;
+    }
+
+    const normalizedRelative = relativeEntrypoint.replace(/\\/g, "/");
+    const absoluteEntrypoint = path.resolve(path.dirname(command), normalizedRelative);
+    if (!fs.existsSync(absoluteEntrypoint)) {
+      return null;
+    }
+
+    return absoluteEntrypoint;
+  }
+
   private resolveNodeCommand(env: NodeJS.ProcessEnv): string {
     const override = env.KOVALSKY_NODE_PATH?.trim();
     if (override && fs.existsSync(override)) {
@@ -102,7 +135,17 @@ export class ProcessManager {
       let args = input.args;
       let env = input.env;
 
-      if (this.isNodeScriptCommand(input.command)) {
+      const binEntrypoint = this.resolveBinWrapperEntrypoint(input.command);
+      if (binEntrypoint) {
+        command = this.resolveNodeCommand(input.env);
+        args = [binEntrypoint, ...input.args];
+        if (command === process.execPath) {
+          env = {
+            ...input.env,
+            ELECTRON_RUN_AS_NODE: "1",
+          };
+        }
+      } else if (this.isNodeScriptCommand(input.command)) {
         command = this.resolveNodeCommand(input.env);
         args = [input.command, ...input.args];
         if (command === process.execPath) {
