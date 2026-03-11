@@ -524,12 +524,15 @@ export class RunService {
     const recentChatContext = chatContextMode === "off"
       ? ""
       : this.buildPipelineChatContextSnippet(nodeMessages, chatContextMode);
-    const effectiveGoal = this.buildNodeGoalWithChatContext(
+    let effectiveGoal = this.buildNodeGoalWithChatContext(
       (node.goal ?? "").trim(),
       recentChatContext,
       input.prompt,
       chatContextMode,
     );
+    if (this.isImmediateStopServerRequest(input.prompt)) {
+      effectiveGoal = this.buildStopServerOnlyGoal(effectiveGoal, input.prompt);
+    }
 
     try {
       const result = await this.agentHost.runStep({
@@ -1046,16 +1049,34 @@ export class RunService {
     }
 
     const hasImperative = /(останови|выключи|отключи|заверши|убей|stop|shutdown|shut\s+down|terminate|kill)/i.test(normalized);
-    if (!hasImperative) {
-      return false;
+    const hasTarget = /(server|сервер|port|порт|localhost|127\.0\.0\.1|background|фонов)/i.test(normalized);
+    if (hasImperative && hasTarget) {
+      return true;
     }
 
-    const hasTarget = /(server|сервер|port|порт|background|фонов)/i.test(normalized);
-    return hasTarget;
+    // Also treat "port still responds/works" complaints as an explicit request to stop it again.
+    const hasStillCue = /(still|ещ[её]|вс[её]\s*так(же)?)/i.test(normalized);
+    const hasActiveCue = /(works?|running|respond|open|active|работает|отвечает|слушает|открыт)/i.test(normalized);
+    if (hasTarget && hasStillCue && hasActiveCue) {
+      return true;
+    }
+
+    return false;
   }
 
   private isLikelyRussianText(input: string): boolean {
     return /[А-Яа-яЁё]/.test(input);
+  }
+
+  private buildStopServerOnlyGoal(existingGoal: string, prompt: string): string {
+    const stopOnlyDirectives = [
+      "Priority override: this rerun is ONLY for stopping the currently running local server/background process.",
+      "Do NOT start any server in this rerun.",
+      "Find and stop the process bound to the reported local URL/port from recent context.",
+      "After stopping, verify the same URL no longer responds and the port is no longer listening.",
+      `Latest user request: ${prompt.trim()}`,
+    ];
+    return `${stopOnlyDirectives.join("\n")}\n\nPrevious node goal and context:\n${existingGoal}`;
   }
 
   private resolveNodePlan(runId: string, node: PipelineGraphNode): NodeExecutionPlan {
