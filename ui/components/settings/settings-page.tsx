@@ -266,9 +266,19 @@ export function SettingsPage(): React.JSX.Element {
     setCodexLoginBusy(true);
     setMessage("");
     try {
-      await api.startCodexLogin();
+      const login = await api.startCodexLogin();
       setCodexLoginStarted(true);
-      setMessage("Codex login started. Complete browser auth; this page will update automatically.");
+      const messageParts = ["Codex login started."];
+      if (login.deviceCode) {
+        messageParts.push(`Verification code: ${login.deviceCode}.`);
+      }
+      if (login.deviceAuthUrl) {
+        window.open(login.deviceAuthUrl, "_blank", "noopener,noreferrer");
+        messageParts.push("Complete authentication in the browser tab that was opened.");
+      } else {
+        messageParts.push("Complete browser auth; this page will update automatically.");
+      }
+      setMessage(messageParts.join(" "));
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Failed to start Codex login.");
     } finally {

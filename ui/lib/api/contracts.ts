@@ -216,7 +216,7 @@ export interface KovalskyApiClient {
   getProviderOAuthUrl(provider: "codex" | "openclaw"): Promise<{ provider: "codex" | "openclaw"; oauthUrl: string }>;
   getToolchainBootstrapStatus(): Promise<ToolchainBootstrapStatus>;
   installRequiredAgents(): Promise<ToolchainBootstrapStatus>;
-  startCodexLogin(): Promise<{ ok: boolean }>;
+  startCodexLogin(): Promise<{ ok: boolean; deviceAuthUrl: string | null; deviceCode: string | null }>;
   getCodexAuthStatus(): Promise<CodexAuthStatus>;
   getSettings(): Promise<GatewaySettings>;
   updateSettings(input: GatewaySettingsPatch): Promise<GatewaySettings>;

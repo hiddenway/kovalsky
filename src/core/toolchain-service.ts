@@ -31,6 +31,11 @@ export interface CodexAuthStatus {
   expiresAt: string | null;
 }
 
+export interface CodexLoginStartResult {
+  deviceAuthUrl: string | null;
+  deviceCode: string | null;
+}
+
 const DEFAULT_PACKAGE_BY_TOOL: Record<KnownTool, string> = {
   codex: "@openai/codex",
   openclaw: "openclaw",
@@ -152,21 +157,82 @@ export class ToolchainService {
     });
   }
 
-  async startCodexLogin(): Promise<void> {
+  async startCodexLogin(): Promise<CodexLoginStartResult> {
     const resolved = await this.ensureAgentCommand("codex-cli", COMMAND_BY_TOOL.codex);
     const invocation = this.resolveInvocation(resolved, []);
 
-    await new Promise<void>((resolve, reject) => {
-      const child = spawn(invocation.command, [...invocation.args, "login"], {
+    return new Promise<CodexLoginStartResult>((resolve, reject) => {
+      const child = spawn(invocation.command, [...invocation.args, "login", "--device-auth"], {
         detached: true,
-        stdio: "ignore",
+        stdio: ["ignore", "pipe", "pipe"],
         env: invocation.env,
       });
 
-      child.once("error", reject);
-      child.once("spawn", () => {
+      let settled = false;
+      let output = "";
+      let spawnSeen = false;
+      const settleTimer = setTimeout(() => {
+        if (settled) {
+          return;
+        }
+        settled = true;
         child.unref();
-        resolve();
+        resolve({ deviceAuthUrl: null, deviceCode: null });
+      }, 1500);
+
+      const tryResolveFromOutput = (): void => {
+        const parsed = this.extractCodexDeviceAuth(output);
+        if (!parsed || settled) {
+          return;
+        }
+        settled = true;
+        clearTimeout(settleTimer);
+        child.unref();
+        resolve(parsed);
+      };
+
+      const onData = (chunk: Buffer): void => {
+        output += chunk.toString();
+        tryResolveFromOutput();
+      };
+
+      child.stdout?.on("data", onData);
+      child.stderr?.on("data", onData);
+
+      child.once("error", (error) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        clearTimeout(settleTimer);
+        reject(error);
+      });
+
+      child.once("spawn", () => {
+        spawnSeen = true;
+      });
+
+      child.once("exit", (code) => {
+        if (settled) {
+          return;
+        }
+        const details = output.trim();
+        const parsed = this.extractCodexDeviceAuth(details);
+        settled = true;
+        clearTimeout(settleTimer);
+        if (parsed) {
+          resolve(parsed);
+          return;
+        }
+        if (code && code !== 0) {
+          reject(new Error(details || `codex login exited with code ${code}`));
+          return;
+        }
+        if (!spawnSeen) {
+          reject(new Error("Failed to start codex login process."));
+          return;
+        }
+        resolve({ deviceAuthUrl: null, deviceCode: null });
       });
     });
   }
@@ -505,6 +571,19 @@ export class ToolchainService {
 
   private resolvePackageName(tool: KnownTool): string {
     return process.env[PACKAGE_ENV_BY_TOOL[tool]]?.trim() || DEFAULT_PACKAGE_BY_TOOL[tool];
+  }
+
+  private extractCodexDeviceAuth(raw: string): CodexLoginStartResult | null {
+    const text = raw.replace(/\u001b\[[0-9;]*m/g, "");
+    const urlMatch = text.match(/https:\/\/auth\.openai\.com\/codex\/device[^\s]*/i);
+    const codeMatch = text.match(/\b([A-Z0-9]{4}-[A-Z0-9]{4,8})\b/);
+    if (!urlMatch && !codeMatch) {
+      return null;
+    }
+    return {
+      deviceAuthUrl: urlMatch?.[0] ?? null,
+      deviceCode: codeMatch?.[1] ?? null,
+    };
   }
 
   private getBundledBinaryPath(tool: KnownTool): string | null {

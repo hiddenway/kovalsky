@@ -420,8 +420,8 @@ export async function registerRoutes(app: FastifyInstance<any, any, any, any>, d
 
   app.post("/toolchain/codex/login", async (_request, reply) => {
     try {
-      await deps.toolchainService.startCodexLogin();
-      return { ok: true };
+      const login = await deps.toolchainService.startCodexLogin();
+      return { ok: true, ...login };
     } catch (error) {
       return reply.code(500).send({ error: error instanceof Error ? error.message : "Failed to start codex login" });
     }

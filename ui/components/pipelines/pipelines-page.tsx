@@ -473,9 +473,19 @@ export function PipelinesPage(): React.JSX.Element {
     setCodexLoginBusy(true);
     setAuthMessage("");
     try {
-      await api.startCodexLogin();
+      const login = await api.startCodexLogin();
       setCodexLoginStarted(true);
-      setAuthMessage("Codex login started. Complete browser auth; this dialog will close automatically.");
+      const messageParts = ["Codex login started."];
+      if (login.deviceCode) {
+        messageParts.push(`Verification code: ${login.deviceCode}.`);
+      }
+      if (login.deviceAuthUrl) {
+        window.open(login.deviceAuthUrl, "_blank", "noopener,noreferrer");
+        messageParts.push("Complete authentication in the browser tab that was opened.");
+      } else {
+        messageParts.push("Complete browser auth; this dialog will close automatically.");
+      }
+      setAuthMessage(messageParts.join(" "));
     } catch (error) {
       setAuthMessage(error instanceof Error ? error.message : "Failed to start Codex login.");
     } finally {
