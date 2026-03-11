@@ -151,7 +151,7 @@ const AGENT_SETTING_FIELDS: Record<string, AgentSettingField[]> = {
       type: "text",
       defaultValue: "",
       placeholder: "openai/gpt-5.1-codex",
-      description: "Optional model override passed as --model for agent runs.",
+      description: "Optional model override written to OpenClaw agent config for this node run.",
     },
     {
       key: "thinking",

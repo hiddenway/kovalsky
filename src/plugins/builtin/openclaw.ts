@@ -485,22 +485,6 @@ function resolveModelOverride(input: unknown): string | null {
   return normalized.length > 0 ? normalized : null;
 }
 
-function hasAgentModelArg(args: string[]): boolean {
-  for (const arg of args) {
-    if (arg === "--model" || arg === "-m" || arg.startsWith("--model=")) {
-      return true;
-    }
-  }
-  return false;
-}
-
-function ensureAgentModelArg(args: string[], model: string | null): string[] {
-  if (!model || args.length === 0 || args[0] !== "agent" || hasAgentModelArg(args)) {
-    return args;
-  }
-  return [...args, "--model", model];
-}
-
 function extractAgentIdFromArgs(args: string[]): string | null {
   if (args.length === 0 || args[0] !== "agent") {
     return null;
@@ -580,7 +564,12 @@ function writeJsonObject(filePath: string, payload: Record<string, unknown>): vo
   fs.writeFileSync(filePath, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
 }
 
-function applyWorkspaceOverrideToState(input: { stateDir: string; workspacePath: string; agentId: string | null }): void {
+function applyWorkspaceOverrideToState(input: {
+  stateDir: string;
+  workspacePath: string;
+  agentId: string | null;
+  model: string | null;
+}): void {
   const stateDir = input.stateDir.trim();
   const workspacePath = input.workspacePath.trim();
   if (!stateDir || !workspacePath) {
@@ -592,6 +581,11 @@ function applyWorkspaceOverrideToState(input: { stateDir: string; workspacePath:
   const agents = isObjectRecord(config.agents) ? { ...config.agents } : {};
   const defaults = isObjectRecord(agents.defaults) ? { ...agents.defaults } : {};
   defaults.workspace = workspacePath;
+  if (input.model) {
+    const model = isObjectRecord(defaults.model) ? { ...defaults.model } : {};
+    model.primary = input.model;
+    defaults.model = model;
+  }
   agents.defaults = defaults;
 
   const normalizedAgentId = (input.agentId ?? "").trim();
@@ -606,16 +600,24 @@ function applyWorkspaceOverrideToState(input: { stateDir: string; workspacePath:
     });
 
     if (existingIndex >= 0 && isObjectRecord(nextList[existingIndex])) {
-      nextList[existingIndex] = {
+      const nextEntry: Record<string, unknown> = {
         ...nextList[existingIndex],
         id: normalizedAgentId,
         workspace: workspacePath,
       };
+      if (input.model) {
+        nextEntry.model = input.model;
+      }
+      nextList[existingIndex] = nextEntry;
     } else {
-      nextList.push({
+      const nextEntry: Record<string, unknown> = {
         id: normalizedAgentId,
         workspace: workspacePath,
-      });
+      };
+      if (input.model) {
+        nextEntry.model = input.model;
+      }
+      nextList.push(nextEntry);
     }
 
     agents.list = nextList;
@@ -688,6 +690,7 @@ export const openclawPlugin: AgentPlugin = {
 
       const configuredArgs = asStringArray(ctx.settings.args);
       const mode = typeof ctx.settings.mode === "string" ? ctx.settings.mode : "agent-local";
+      const modelOverride = resolveModelOverride(ctx.settings.model);
       let commandArgs: string[];
       let selectedAgentId: string | null = null;
 
@@ -756,7 +759,6 @@ export const openclawPlugin: AgentPlugin = {
           buildAgentMessage(ctx),
         ];
       }
-      commandArgs = ensureAgentModelArg(commandArgs, resolveModelOverride(ctx.settings.model));
 
       if (isolatedStateDir && statePrep.isolated) {
         try {
@@ -764,6 +766,7 @@ export const openclawPlugin: AgentPlugin = {
             stateDir: isolatedStateDir,
             workspacePath: ctx.workspacePath,
             agentId: selectedAgentId,
+            model: modelOverride,
           });
         } catch {
           // keep running with copied state if override fails
