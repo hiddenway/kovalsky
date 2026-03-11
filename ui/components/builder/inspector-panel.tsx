@@ -589,12 +589,24 @@ export function InspectorPanel({
                       </span>
                     ) : null}
                     {field.type === "text" ? (
-                      <input
-                        value={String(readValue(field))}
-                        onChange={(event) => updateSetting(field.key, event.target.value)}
-                        className="w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-sm text-zinc-100 outline-none ring-cyan-400/40 focus:ring"
-                        placeholder={field.placeholder}
-                      />
+                      <>
+                        <input
+                          value={String(readValue(field))}
+                          onChange={(event) => updateSetting(field.key, event.target.value)}
+                          className="w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-sm text-zinc-100 outline-none ring-cyan-400/40 focus:ring"
+                          placeholder={field.placeholder}
+                          list={field.options && field.options.length > 0 ? `setting-${selectedNode.id}-${field.key}` : undefined}
+                        />
+                        {field.options && field.options.length > 0 ? (
+                          <datalist id={`setting-${selectedNode.id}-${field.key}`}>
+                            {field.options.map((option) => (
+                              <option key={option.value} value={option.value}>
+                                {option.label}
+                              </option>
+                            ))}
+                          </datalist>
+                        ) : null}
+                      </>
                     ) : null}
                     {field.type === "textarea" ? (
                       <textarea

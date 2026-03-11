@@ -29,6 +29,18 @@ export type AgentSettingField = {
   step?: number;
 };
 
+const CODEX_MODEL_SUGGESTIONS: Array<{ label: string; value: string }> = [
+  { label: "GPT-5.1 Codex", value: "gpt-5.1-codex" },
+  { label: "GPT-5.3 Codex", value: "gpt-5.3-codex" },
+];
+
+const OPENCLAW_MODEL_SUGGESTIONS: Array<{ label: string; value: string }> = [
+  { label: "OpenAI Codex GPT-5.2 (OAuth-safe)", value: "openai-codex/gpt-5.2-codex" },
+  { label: "OpenAI Codex GPT-5.3", value: "openai-codex/gpt-5.3-codex" },
+  { label: "OpenAI Codex GPT-5.3 Spark", value: "openai-codex/gpt-5.3-codex-spark" },
+  { label: "OpenAI GPT-5.1 Codex (API key)", value: "openai/gpt-5.1-codex" },
+];
+
 const DEFAULT_CODEX_REPORT_PROMPT_TEMPLATE = [
   "Generate a concise human-readable post-step report.",
   "No tool calls, no commands, no file edits. Reply with plain text only.",
@@ -76,6 +88,7 @@ const AGENT_SETTING_FIELDS: Record<string, AgentSettingField[]> = {
       type: "text",
       defaultValue: "",
       placeholder: "gpt-5.1-codex",
+      options: CODEX_MODEL_SUGGESTIONS,
       description: "Optional model override passed as --model for this node.",
     },
     {
@@ -150,7 +163,8 @@ const AGENT_SETTING_FIELDS: Record<string, AgentSettingField[]> = {
       label: "Model",
       type: "text",
       defaultValue: "",
-      placeholder: "openai/gpt-5.1-codex",
+      placeholder: "openai-codex/gpt-5.2-codex",
+      options: OPENCLAW_MODEL_SUGGESTIONS,
       description: "Optional model override written to OpenClaw agent config for this node run.",
     },
     {
