@@ -162,7 +162,7 @@ export class ToolchainService {
     const invocation = this.resolveInvocation(resolved, []);
 
     return new Promise<CodexLoginStartResult>((resolve, reject) => {
-      const child = spawn(invocation.command, [...invocation.args, "login", "--device-auth"], {
+      const child = spawn(invocation.command, [...invocation.args, "login"], {
         detached: true,
         stdio: ["ignore", "pipe", "pipe"],
         env: invocation.env,
@@ -624,7 +624,7 @@ export class ToolchainService {
 
   private extractCodexDeviceAuth(raw: string): CodexLoginStartResult | null {
     const text = raw.replace(/\u001b\[[0-9;]*m/g, "");
-    const urlMatch = text.match(/https:\/\/auth\.openai\.com\/codex\/device[^\s]*/i);
+    const urlMatch = text.match(/https:\/\/auth\.openai\.com\/[^\s]*/i);
     const codeMatch = text.match(/\b([A-Z0-9]{4}-[A-Z0-9]{4,8})\b/);
     if (!urlMatch && !codeMatch) {
       return null;
