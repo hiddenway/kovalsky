@@ -30,6 +30,7 @@ export type AgentSettingField = {
 };
 
 const CODEX_MODEL_SUGGESTIONS: Array<{ label: string; value: string }> = [
+  { label: "GPT-5.2 Codex (default)", value: "gpt-5.2-codex" },
   { label: "GPT-5.1 Codex", value: "gpt-5.1-codex" },
   { label: "GPT-5.3 Codex", value: "gpt-5.3-codex" },
 ];
@@ -87,7 +88,7 @@ const AGENT_SETTING_FIELDS: Record<string, AgentSettingField[]> = {
       label: "Model",
       type: "text",
       defaultValue: "",
-      placeholder: "gpt-5.1-codex",
+      placeholder: "gpt-5.2-codex",
       options: CODEX_MODEL_SUGGESTIONS,
       description: "Optional model override passed as --model for this node.",
     },

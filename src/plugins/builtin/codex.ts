@@ -1,6 +1,8 @@
 import type { AgentPlugin } from "../types";
 import type { StepExecutionContext } from "../../types";
 
+const DEFAULT_CODEX_MODEL = "gpt-5.2-codex";
+
 function asStringArray(input: unknown): string[] {
   return Array.isArray(input) ? input.map(String) : [];
 }
@@ -245,7 +247,7 @@ export const codexPlugin: AgentPlugin = {
             "--skip-git-repo-check",
             dangerous ? "--dangerously-bypass-approvals-and-sandbox" : "--full-auto",
           ];
-      args = injectExecModelOption(args, resolveModelOverride(ctx.settings.model));
+      args = injectExecModelOption(args, resolveModelOverride(ctx.settings.model) ?? DEFAULT_CODEX_MODEL);
       const computedGoal = (ctx.reportMode ? buildCodexReportGoal(ctx) : buildCodexGoal(ctx)).trim();
       if (asBoolean(ctx.settings.passGoalAsArg, true) && computedGoal) {
         args.push(computedGoal);
