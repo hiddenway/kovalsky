@@ -50,6 +50,8 @@ async function main(): Promise<void> {
       }
       cb(new Error("CORS origin denied"), false);
     },
+    methods: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Authorization", "Content-Type"],
   });
 
   await app.register(websocket);
