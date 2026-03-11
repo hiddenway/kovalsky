@@ -43,6 +43,7 @@ export interface StartRunOverrides {
 type FollowupRerunDecision = "rerun" | "no_rerun" | "unknown";
 type NodeChatContextMode = "off" | "light" | "strict";
 type NodeFollowupRerunLaunch = "started" | "already_running";
+type OpenClawTokenSource = "none" | "openclaw_credential" | "codex_oauth";
 
 interface FollowupReplyResult {
   reply: string;
@@ -1255,8 +1256,10 @@ export class RunService {
     const codexAuth = readCodexAuthState(process.env);
     const codexAuthToken = codexAuth.authenticated ? codexAuth.token : "";
     let effectiveOpenClawToken = "";
+    let openClawTokenSource: OpenClawTokenSource = "none";
     if (openClawMode === "custom") {
       effectiveOpenClawToken = openclaw || "";
+      openClawTokenSource = openclaw ? "openclaw_credential" : "none";
       if (customOpenClawBaseUrl) {
         env.OPENAI_BASE_URL = customOpenClawBaseUrl;
         env.OPENCLAW_BASE_URL = customOpenClawBaseUrl;
@@ -1264,7 +1267,13 @@ export class RunService {
         env.OPENCLAW_MODELS_PROVIDERS_OPENAI_BASEURL = customOpenClawBaseUrl;
       }
     } else {
-      effectiveOpenClawToken = openclaw || codexAuthToken || "";
+      if (openclaw) {
+        effectiveOpenClawToken = openclaw;
+        openClawTokenSource = "openclaw_credential";
+      } else if (codexAuthToken) {
+        effectiveOpenClawToken = codexAuthToken;
+        openClawTokenSource = "codex_oauth";
+      }
     }
 
     if (effectiveOpenClawToken) {
@@ -1280,6 +1289,7 @@ export class RunService {
     this.bootstrapOpenClawState({
       stateDir: openClawStateDir,
       token: effectiveOpenClawToken,
+      tokenSource: openClawTokenSource,
       providerMode: openClawMode,
       customApiBaseUrl: customOpenClawBaseUrl,
     });
@@ -1344,9 +1354,33 @@ export class RunService {
     config.models = models;
   }
 
+  private resolveDefaultOpenClawModel(input: {
+    providerMode: OpenClawProviderMode;
+    token: string;
+    tokenSource: OpenClawTokenSource;
+  }): string {
+    const explicitDefault = (process.env.KOVALSKY_OPENCLAW_DEFAULT_MODEL ?? "").trim();
+    if (explicitDefault) {
+      return explicitDefault;
+    }
+
+    const isOpenAiApiKey = this.looksLikeOpenAIApiKey(input.token);
+    if (input.providerMode === "custom" || isOpenAiApiKey) {
+      return "openai/gpt-5.1-codex";
+    }
+
+    if (input.tokenSource === "codex_oauth") {
+      const codexOauthDefault = (process.env.KOVALSKY_OPENCLAW_CODEX_OAUTH_MODEL ?? "").trim();
+      return codexOauthDefault || "openai-codex/gpt-5-codex";
+    }
+
+    return "openai-codex/gpt-5.3-codex";
+  }
+
   private bootstrapOpenClawState(input: {
     stateDir: string;
     token: string;
+    tokenSource: OpenClawTokenSource;
     providerMode: OpenClawProviderMode;
     customApiBaseUrl: string;
   }): void {
@@ -1404,9 +1438,11 @@ export class RunService {
         ? { ...(defaults.model as Record<string, unknown>) }
         : {};
 
-      model.primary = input.providerMode === "custom" || isOpenAiApiKey
-        ? "openai/gpt-5.1-codex"
-        : "openai-codex/gpt-5.3-codex";
+      model.primary = this.resolveDefaultOpenClawModel({
+        providerMode: input.providerMode,
+        token: input.token,
+        tokenSource: input.tokenSource,
+      });
       defaults.model = model;
       agents.defaults = defaults;
       config.agents = agents;
