@@ -1377,6 +1377,39 @@ export class RunService {
     return "openai-codex/gpt-5.3-codex";
   }
 
+  private isUnsupportedCodexOauthModel(model: string): boolean {
+    const normalized = model.trim().toLowerCase();
+    return normalized === "openai-codex/gpt-5.3-codex"
+      || normalized === "gpt-5.3-codex"
+      || normalized === "openai-codex/gpt-5.3-codex-spark"
+      || normalized === "gpt-5.3-codex-spark";
+  }
+
+  private normalizeCodexOauthAgentModelOverrides(agents: Record<string, unknown>, fallbackModel: string): void {
+    const normalizedFallback = fallbackModel.trim();
+    if (!normalizedFallback) {
+      return;
+    }
+
+    const list = Array.isArray(agents.list) ? agents.list : [];
+    if (list.length === 0) {
+      return;
+    }
+
+    agents.list = list.map((entry) => {
+      if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+        return entry;
+      }
+
+      const nextEntry = { ...(entry as Record<string, unknown>) };
+      const currentModel = typeof nextEntry.model === "string" ? nextEntry.model.trim() : "";
+      if (currentModel && this.isUnsupportedCodexOauthModel(currentModel)) {
+        nextEntry.model = normalizedFallback;
+      }
+      return nextEntry;
+    });
+  }
+
   private bootstrapOpenClawState(input: {
     stateDir: string;
     token: string;
@@ -1438,11 +1471,15 @@ export class RunService {
         ? { ...(defaults.model as Record<string, unknown>) }
         : {};
 
-      model.primary = this.resolveDefaultOpenClawModel({
+      const resolvedDefaultModel = this.resolveDefaultOpenClawModel({
         providerMode: input.providerMode,
         token: input.token,
         tokenSource: input.tokenSource,
       });
+      model.primary = resolvedDefaultModel;
+      if (input.tokenSource === "codex_oauth") {
+        this.normalizeCodexOauthAgentModelOverrides(agents, resolvedDefaultModel);
+      }
       defaults.model = model;
       agents.defaults = defaults;
       config.agents = agents;
