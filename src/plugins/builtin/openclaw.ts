@@ -481,6 +481,12 @@ function buildSessionId(ctx: StepExecutionContext, suffix = ""): string {
   return composed.slice(0, 64);
 }
 
+function buildReportSessionSuffix(): string {
+  const stamp = Date.now().toString(36);
+  const random = Math.random().toString(36).slice(2, 8);
+  return `report-${stamp}-${random}`;
+}
+
 function ensureAgentSessionId(args: string[], sessionId: string): string[] {
   if (args.length === 0 || args[0] !== "agent") {
     return args;
@@ -793,7 +799,7 @@ export const openclawPlugin: AgentPlugin = {
           : null;
         const agentId = configuredAgent ?? detectDefaultAgent(profile) ?? "main";
         selectedAgentId = agentId;
-        const sessionId = buildSessionId(ctx, "-report");
+        const sessionId = buildSessionId(ctx, buildReportSessionSuffix());
         commandArgs = [
           "agent",
           "--local",

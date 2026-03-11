@@ -312,7 +312,8 @@ export class RunService {
       prompt,
     });
     const shouldLaunchFollowup = followup.decision === "rerun";
-    const rerunMode = input.rerunMode === "pipeline" ? "pipeline" : "node";
+    const requestedRerunMode = input.rerunMode === "pipeline" ? "pipeline" : "node";
+    const rerunMode = this.isImmediateStopServerRequest(prompt) ? "node" : requestedRerunMode;
     let nodeRerunLaunch: NodeFollowupRerunLaunch | null = null;
     let startedRunId: string | null = null;
     let pipelineRerunError: string | null = null;
