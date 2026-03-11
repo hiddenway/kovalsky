@@ -509,6 +509,37 @@ function resolveModelOverride(input: unknown): string | null {
   return normalized.length > 0 ? normalized : null;
 }
 
+function looksLikeOpenAiApiKey(value: string): boolean {
+  return /^sk-[A-Za-z0-9]/.test(value.trim());
+}
+
+function isUnsupportedCodexOauthModel(model: string): boolean {
+  const normalized = model.trim().toLowerCase();
+  return normalized === "openai-codex/gpt-5.3-codex"
+    || normalized === "gpt-5.3-codex"
+    || normalized === "openai-codex/gpt-5.3-codex-spark"
+    || normalized === "gpt-5.3-codex-spark";
+}
+
+function normalizeModelOverrideForAuth(model: string | null, env: NodeJS.ProcessEnv): string | null {
+  if (!model || !isUnsupportedCodexOauthModel(model)) {
+    return model;
+  }
+
+  const openAiApiKey = (env.OPENAI_API_KEY ?? "").trim();
+  if (looksLikeOpenAiApiKey(openAiApiKey)) {
+    return model;
+  }
+
+  const openClawToken = (env.OPENCLAW_TOKEN ?? env.OPENCLAW_API_KEY ?? "").trim();
+  const isOauthLikeToken = Boolean(openClawToken) && !looksLikeOpenAiApiKey(openClawToken);
+  if (!isOauthLikeToken) {
+    return model;
+  }
+
+  return (env.KOVALSKY_OPENCLAW_CODEX_OAUTH_MODEL ?? "").trim() || "openai-codex/gpt-5-codex";
+}
+
 function extractAgentIdFromArgs(args: string[]): string | null {
   if (args.length === 0 || args[0] !== "agent") {
     return null;
@@ -750,7 +781,7 @@ export const openclawPlugin: AgentPlugin = {
 
       const mode = typeof ctx.settings.mode === "string" ? ctx.settings.mode : "agent-local";
       const configuredArgs = mode === "raw" ? asStringArray(ctx.settings.args) : [];
-      const modelOverride = resolveModelOverride(ctx.settings.model);
+      const modelOverride = normalizeModelOverrideForAuth(resolveModelOverride(ctx.settings.model), ctx.env);
       let commandArgs: string[];
       let selectedAgentId: string | null = null;
 

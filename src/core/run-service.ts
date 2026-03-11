@@ -1369,12 +1369,9 @@ export class RunService {
       return "openai/gpt-5.1-codex";
     }
 
-    if (input.tokenSource === "codex_oauth") {
-      const codexOauthDefault = (process.env.KOVALSKY_OPENCLAW_CODEX_OAUTH_MODEL ?? "").trim();
-      return codexOauthDefault || "openai-codex/gpt-5-codex";
-    }
-
-    return "openai-codex/gpt-5.3-codex";
+    // For any non-OpenAI-key auth token (OAuth-style), prefer a broadly compatible Codex model.
+    const codexOauthDefault = (process.env.KOVALSKY_OPENCLAW_CODEX_OAUTH_MODEL ?? "").trim();
+    return codexOauthDefault || "openai-codex/gpt-5-codex";
   }
 
   private isUnsupportedCodexOauthModel(model: string): boolean {
@@ -1477,7 +1474,7 @@ export class RunService {
         tokenSource: input.tokenSource,
       });
       model.primary = resolvedDefaultModel;
-      if (input.tokenSource === "codex_oauth") {
+      if (input.providerMode !== "custom" && !isOpenAiApiKey) {
         this.normalizeCodexOauthAgentModelOverrides(agents, resolvedDefaultModel);
       }
       defaults.model = model;
