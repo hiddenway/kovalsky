@@ -32,108 +32,92 @@ function readJsonFileSafe(filePath) {
   }
 }
 
-function readPackageJsonCandidates(packageName) {
-  const out = [];
-  const seenRealPaths = new Set();
-
-  const packageDir = packageDirForName(packageName);
-  const topLevelPath = path.join(packageDir, "package.json");
-  const topLevelPkg = readJsonFileSafe(topLevelPath);
-  if (topLevelPkg) {
-    out.push(topLevelPkg);
-    try {
-      seenRealPaths.add(fs.realpathSync(topLevelPath));
-    } catch {
-      // ignore realpath errors and keep best-effort candidate list
+function findPackageRootFromEntry(entryPath, expectedPackageName) {
+  let currentDir = path.dirname(entryPath);
+  while (true) {
+    const candidateJsonPath = path.join(currentDir, "package.json");
+    const candidatePkg = readJsonFileSafe(candidateJsonPath);
+    if (candidatePkg && candidatePkg.name === expectedPackageName) {
+      return currentDir;
     }
+    const parent = path.dirname(currentDir);
+    if (parent === currentDir) {
+      return null;
+    }
+    currentDir = parent;
+  }
+}
+
+function resolveInstalledPackageDir(packageName, fromDir) {
+  try {
+    const resolvedEntry = require.resolve(packageName, { paths: [fromDir] });
+    const rootDir = findPackageRootFromEntry(resolvedEntry, packageName);
+    if (rootDir) {
+      return rootDir;
+    }
+  } catch {
+    // fallback below
   }
 
-  const pnpmStoreDir = path.join(sourceDir, ".pnpm");
-  if (!fs.existsSync(pnpmStoreDir)) {
-    return out;
+  const fallbackDir = packageDirForName(packageName);
+  if (fs.existsSync(path.join(fallbackDir, "package.json"))) {
+    return fallbackDir;
   }
-
-  const packagePrefix = `${packageName.replace("/", "+")}@`;
-  for (const entry of fs.readdirSync(pnpmStoreDir, { withFileTypes: true })) {
-    if (!entry.isDirectory() || !entry.name.startsWith(packagePrefix)) {
-      continue;
-    }
-    const candidatePath = path.join(pnpmStoreDir, entry.name, "node_modules", ...packageName.split("/"), "package.json");
-    const pkg = readJsonFileSafe(candidatePath);
-    if (!pkg) {
-      continue;
-    }
-
-    try {
-      const realPath = fs.realpathSync(candidatePath);
-      if (seenRealPaths.has(realPath)) {
-        continue;
-      }
-      seenRealPaths.add(realPath);
-    } catch {
-      // ignore realpath errors and still include candidate
-    }
-
-    out.push(pkg);
-  }
-
-  return out;
+  return null;
 }
 
 function collectRuntimePackageNames() {
-  const queue = [...rootProductionDeps];
-  const visited = new Set();
-  const processQueue = () => {
-    while (queue.length > 0) {
-      const packageName = queue.shift();
-      if (!packageName || visited.has(packageName)) {
-        continue;
-      }
-
-      visited.add(packageName);
-      const packageJsonCandidates = readPackageJsonCandidates(packageName);
-      if (packageJsonCandidates.length === 0) {
-        continue;
-      }
-
-      for (const pkg of packageJsonCandidates) {
-        const dependencies = Object.keys(pkg.dependencies ?? {});
-        const optionalDependencies = Object.keys(pkg.optionalDependencies ?? {});
-        for (const depName of [...dependencies, ...optionalDependencies]) {
-          if (!visited.has(depName)) {
-            queue.push(depName);
-          }
-        }
-      }
+  const packageNames = new Set();
+  const visitedDirs = new Set();
+  const queue = [];
+  const enqueueByName = (packageName, fromDir) => {
+    if (!packageName) {
+      return;
     }
+    const resolvedDir = resolveInstalledPackageDir(packageName, fromDir);
+    if (!resolvedDir) {
+      return;
+    }
+
+    let realDir = resolvedDir;
+    try {
+      realDir = fs.realpathSync(resolvedDir);
+    } catch {
+      // keep original path if realpath fails
+    }
+
+    if (visitedDirs.has(realDir)) {
+      return;
+    }
+
+    queue.push(realDir);
   };
 
-  processQueue();
+  for (const packageName of rootProductionDeps) {
+    enqueueByName(packageName, root);
+  }
 
-  // Some dependencies are nested under openclaw and can be a newer version
-  // than the top-level hoisted package. Include them explicitly so runtime
-  // payload keeps required transitive deps (e.g. @snazzah/davey for @discordjs/voice@0.19.1).
-  const openClawNestedVoicePath = path.join(
-    sourceDir,
-    "openclaw",
-    "node_modules",
-    "@discordjs",
-    "voice",
-    "package.json",
-  );
-  const openClawNestedVoicePkg = readJsonFileSafe(openClawNestedVoicePath);
-  if (openClawNestedVoicePkg) {
-    const dependencies = Object.keys(openClawNestedVoicePkg.dependencies ?? {});
-    const optionalDependencies = Object.keys(openClawNestedVoicePkg.optionalDependencies ?? {});
+  while (queue.length > 0) {
+    const packageDir = queue.shift();
+    if (!packageDir || visitedDirs.has(packageDir)) {
+      continue;
+    }
+    visitedDirs.add(packageDir);
+
+    const pkg = readJsonFileSafe(path.join(packageDir, "package.json"));
+    if (!pkg || typeof pkg.name !== "string" || !pkg.name.trim()) {
+      continue;
+    }
+    packageNames.add(pkg.name.trim());
+
+    const dependencies = Object.keys(pkg.dependencies ?? {});
+    const optionalDependencies = Object.keys(pkg.optionalDependencies ?? {});
     for (const depName of [...dependencies, ...optionalDependencies]) {
-      if (!visited.has(depName)) {
-        queue.push(depName);
-      }
+      enqueueByName(depName, packageDir);
     }
   }
-  processQueue();
 
-  return visited;
+  return packageNames;
 }
 
 const runtimePackages = collectRuntimePackageNames();
