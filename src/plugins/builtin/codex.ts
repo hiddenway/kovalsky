@@ -27,6 +27,33 @@ function asString(input: unknown): string {
   return typeof input === "string" ? input : "";
 }
 
+function resolveModelOverride(input: unknown): string | null {
+  if (typeof input !== "string") {
+    return null;
+  }
+  const normalized = input.trim();
+  return normalized.length > 0 ? normalized : null;
+}
+
+function hasModelOption(args: string[]): boolean {
+  for (const arg of args) {
+    if (arg === "--model" || arg === "-m" || arg.startsWith("--model=")) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function injectExecModelOption(args: string[], model: string | null): string[] {
+  if (!model || hasModelOption(args)) {
+    return args;
+  }
+  if (args[0] !== "exec") {
+    return args;
+  }
+  return [...args, "--model", model];
+}
+
 function buildFullHandoffDump(ctx: StepExecutionContext): string {
   if (ctx.resolvedInputs.handoffs.length === 0) {
     return "";
@@ -181,6 +208,7 @@ export const codexPlugin: AgentPlugin = {
       properties: {
         command: { type: "string" },
         args: { type: "array", items: { type: "string" } },
+        model: { type: "string" },
         passGoalAsArg: { type: "boolean" },
         reportPromptTemplate: { type: "string" },
       },
@@ -196,13 +224,14 @@ export const codexPlugin: AgentPlugin = {
       const command = typeof ctx.settings.command === "string" ? ctx.settings.command : "codex";
       const configuredArgs = asStringArray(ctx.settings.args);
       const dangerous = asBoolean(ctx.settings.dangerouslyBypassSandbox, true);
-      const args = configuredArgs.length > 0
+      let args = configuredArgs.length > 0
         ? configuredArgs
         : [
             "exec",
             "--skip-git-repo-check",
             dangerous ? "--dangerously-bypass-approvals-and-sandbox" : "--full-auto",
           ];
+      args = injectExecModelOption(args, resolveModelOverride(ctx.settings.model));
       const computedGoal = (ctx.reportMode ? buildCodexReportGoal(ctx) : buildCodexGoal(ctx)).trim();
       if (asBoolean(ctx.settings.passGoalAsArg, true) && computedGoal) {
         args.push(computedGoal);

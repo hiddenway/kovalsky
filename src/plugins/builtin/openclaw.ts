@@ -477,6 +477,30 @@ function ensureAgentSessionId(args: string[], sessionId: string): string[] {
   return [...args, "--session-id", sessionId];
 }
 
+function resolveModelOverride(input: unknown): string | null {
+  if (typeof input !== "string") {
+    return null;
+  }
+  const normalized = input.trim();
+  return normalized.length > 0 ? normalized : null;
+}
+
+function hasAgentModelArg(args: string[]): boolean {
+  for (const arg of args) {
+    if (arg === "--model" || arg === "-m" || arg.startsWith("--model=")) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function ensureAgentModelArg(args: string[], model: string | null): string[] {
+  if (!model || args.length === 0 || args[0] !== "agent" || hasAgentModelArg(args)) {
+    return args;
+  }
+  return [...args, "--model", model];
+}
+
 function extractAgentIdFromArgs(args: string[]): string | null {
   if (args.length === 0 || args[0] !== "agent") {
     return null;
@@ -633,6 +657,7 @@ export const openclawPlugin: AgentPlugin = {
         profile: { type: "string", enum: ["smoke", "full"] },
         mode: { type: "string", enum: ["agent-local", "raw"] },
         agentId: { type: "string" },
+        model: { type: "string" },
         thinking: { type: "string", enum: ["off", "minimal", "low", "medium", "high"] },
         timeoutSeconds: { type: "number" },
         passGoalAsArg: { type: "boolean" },
@@ -731,6 +756,7 @@ export const openclawPlugin: AgentPlugin = {
           buildAgentMessage(ctx),
         ];
       }
+      commandArgs = ensureAgentModelArg(commandArgs, resolveModelOverride(ctx.settings.model));
 
       if (isolatedStateDir && statePrep.isolated) {
         try {

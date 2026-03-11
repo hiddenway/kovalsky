@@ -71,6 +71,14 @@ const AGENT_SETTING_FIELDS: Record<string, AgentSettingField[]> = {
       description: "Executable used to run Codex.",
     },
     {
+      key: "model",
+      label: "Model",
+      type: "text",
+      defaultValue: "",
+      placeholder: "gpt-5.1-codex",
+      description: "Optional model override passed as --model for this node.",
+    },
+    {
       key: "passGoalAsArg",
       label: "Pass Goal As Arg",
       type: "boolean",
@@ -136,6 +144,14 @@ const AGENT_SETTING_FIELDS: Record<string, AgentSettingField[]> = {
       type: "text",
       defaultValue: "main",
       placeholder: "main",
+    },
+    {
+      key: "model",
+      label: "Model",
+      type: "text",
+      defaultValue: "",
+      placeholder: "openai/gpt-5.1-codex",
+      description: "Optional model override passed as --model for agent runs.",
     },
     {
       key: "thinking",
