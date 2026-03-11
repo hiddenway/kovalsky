@@ -103,6 +103,7 @@ export function SettingsPage(): React.JSX.Element {
   const [openaiApiKey, setOpenaiApiKey] = useState("");
   const [openClawMode, setOpenClawMode] = useState<OpenClawProviderMode>("codex");
   const [openClawCustomApiBaseUrl, setOpenClawCustomApiBaseUrl] = useState("");
+  const [openClawApiKey, setOpenClawApiKey] = useState("");
   const [openClawBusy, setOpenClawBusy] = useState(false);
 
   const gatewayConnected = gatewayStatus === "connected";
@@ -246,6 +247,10 @@ export function SettingsPage(): React.JSX.Element {
     () => providers.filter((item) => item.provider === "openai"),
     [providers],
   );
+  const openClawProviders = useMemo(
+    () => providers.filter((item) => item.provider === "openclaw"),
+    [providers],
+  );
 
   const persistCodexAuthMode = (nextMode: CodexAuthMode): void => {
     setCodexAuthMode(nextMode);
@@ -383,6 +388,16 @@ export function SettingsPage(): React.JSX.Element {
     setOpenClawBusy(true);
     setMessage("");
     try {
+      const apiKey = openClawApiKey.trim();
+      if (apiKey) {
+        await api.connectProvider({
+          provider: "openclaw",
+          apiKey,
+          authType: "api_key",
+          label: "OpenClaw API key",
+        });
+      }
+
       const payload = await api.updateSettings({
         agents: {
           openclaw: {
@@ -391,12 +406,36 @@ export function SettingsPage(): React.JSX.Element {
           },
         },
       });
+      const providerList = await api.listProviders();
+      setProviders(providerList);
       setSettings(payload);
       setOpenClawMode(payload.agents.openclaw.providerMode);
       setOpenClawCustomApiBaseUrl(payload.agents.openclaw.customApiBaseUrl);
-      setMessage("OpenClaw settings saved.");
+      setOpenClawApiKey("");
+      setMessage(apiKey ? "OpenClaw settings and API key saved." : "OpenClaw settings saved.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Failed to save OpenClaw settings.");
+    } finally {
+      setOpenClawBusy(false);
+    }
+  };
+
+  const removeOpenClawKeys = async (): Promise<void> => {
+    setOpenClawBusy(true);
+    setMessage("");
+    try {
+      if (openClawProviders.length === 0) {
+        setMessage("No OpenClaw API key saved.");
+        return;
+      }
+
+      await Promise.all(openClawProviders.map((item) => api.deleteProvider(item.id)));
+      const providerList = await api.listProviders();
+      setProviders(providerList);
+      setOpenClawApiKey("");
+      setMessage("OpenClaw API key removed.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Failed to remove OpenClaw API key.");
     } finally {
       setOpenClawBusy(false);
     }
@@ -569,21 +608,41 @@ export function SettingsPage(): React.JSX.Element {
               </div>
 
               {openClawMode === "custom" ? (
-                <label className="mt-3 block text-xs text-zinc-400">
-                  Custom API Base URL
-                  <input
-                    value={openClawCustomApiBaseUrl}
-                    onChange={(event) => setOpenClawCustomApiBaseUrl(event.target.value)}
-                    className="mt-1 w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 outline-none ring-cyan-400/40 focus:ring"
-                    placeholder="https://api.example.com/v1"
-                  />
-                </label>
+                <div className="mt-3 grid gap-3">
+                  <label className="block text-xs text-zinc-400">
+                    Custom API Base URL
+                    <input
+                      value={openClawCustomApiBaseUrl}
+                      onChange={(event) => setOpenClawCustomApiBaseUrl(event.target.value)}
+                      className="mt-1 w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 outline-none ring-cyan-400/40 focus:ring"
+                      placeholder="https://api.example.com/v1"
+                    />
+                  </label>
+                  <label className="block text-xs text-zinc-400">
+                    Custom API Key
+                    <input
+                      type="password"
+                      value={openClawApiKey}
+                      onChange={(event) => setOpenClawApiKey(event.target.value)}
+                      className="mt-1 w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 outline-none ring-cyan-400/40 focus:ring"
+                      placeholder={openClawProviders.length > 0 ? "Saved. Enter to replace" : "Paste API key"}
+                    />
+                  </label>
+                  <p className="text-[11px] text-zinc-500">
+                    API key status: {openClawProviders.length > 0 ? "saved" : "not saved"}
+                  </p>
+                </div>
               ) : null}
 
-              <div className="mt-3">
+              <div className="mt-3 flex flex-wrap gap-2">
                 <Button type="button" disabled={openClawBusy} onClick={() => void saveOpenClawSettings()}>
                   {openClawBusy ? "Saving..." : "Save OpenClaw Settings"}
                 </Button>
+                {openClawMode === "custom" && openClawProviders.length > 0 ? (
+                  <Button type="button" variant="danger" disabled={openClawBusy} onClick={() => void removeOpenClawKeys()}>
+                    Remove Saved API Key
+                  </Button>
+                ) : null}
               </div>
 
               <p className="mt-2 text-xs text-zinc-500">
