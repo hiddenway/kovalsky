@@ -15,6 +15,7 @@ const packageJson = fs.existsSync(packageJsonPath)
   : {};
 const devOnlyTopLevel = new Set(Object.keys(packageJson.devDependencies ?? {}));
 const rootProductionDeps = Object.keys(packageJson.dependencies ?? {});
+const openClawCriticalPackages = ["@discordjs/voice", "@snazzah/davey", "tslog"];
 
 function packageDirForName(packageName) {
   return path.join(sourceDir, ...packageName.split("/"));
@@ -97,6 +98,17 @@ function collectRuntimePackageNames() {
     enqueueByName(packageName, root);
   }
 
+  const openclawDir = resolveInstalledPackageDir("openclaw", root);
+  if (openclawDir) {
+    for (const packageName of openClawCriticalPackages) {
+      enqueueByName(packageName, openclawDir);
+    }
+  } else {
+    for (const packageName of openClawCriticalPackages) {
+      enqueueByName(packageName, root);
+    }
+  }
+
   while (queue.length > 0) {
     const packageDir = queue.shift();
     if (!packageDir || visitedDirs.has(packageDir)) {
@@ -118,6 +130,61 @@ function collectRuntimePackageNames() {
   }
 
   return packageNames;
+}
+
+function assertRuntimePathExists(targetPath, reason) {
+  if (!fs.existsSync(targetPath)) {
+    throw new Error(`${reason}: ${targetPath}`);
+  }
+}
+
+function assertResolvableFromPaths(specifier, lookupPaths, reason) {
+  for (const lookupPath of lookupPaths) {
+    if (!lookupPath || !fs.existsSync(lookupPath)) {
+      continue;
+    }
+    try {
+      require.resolve(specifier, { paths: [lookupPath] });
+      return;
+    } catch {
+      // try next lookup root
+    }
+  }
+
+  const lookupDescription = lookupPaths.filter(Boolean).join(", ");
+  throw new Error(`${reason}: '${specifier}' (lookup roots: ${lookupDescription})`);
+}
+
+function verifyOpenClawRuntimeLayout(nodeModulesDir) {
+  const openclawDir = path.join(nodeModulesDir, "openclaw");
+  assertRuntimePathExists(openclawDir, "openclaw package missing in runtime node_modules");
+  const entryCandidates = [
+    path.join(openclawDir, "openclaw.mjs"),
+    path.join(openclawDir, "dist", "entry.js"),
+    path.join(openclawDir, "dist", "entry.mjs"),
+  ];
+  if (!entryCandidates.some((candidate) => fs.existsSync(candidate))) {
+    throw new Error(`openclaw runtime entry missing. Checked: ${entryCandidates.join(", ")}`);
+  }
+
+  assertRuntimePathExists(path.join(nodeModulesDir, "tslog", "package.json"), "tslog package missing in runtime node_modules");
+  assertRuntimePathExists(
+    path.join(nodeModulesDir, "@snazzah", "davey", "package.json"),
+    "@snazzah/davey package missing in runtime node_modules",
+  );
+
+  const voiceDirCandidates = [
+    path.join(openclawDir, "node_modules", "@discordjs", "voice"),
+    path.join(nodeModulesDir, "@discordjs", "voice"),
+  ];
+  const voiceDir = voiceDirCandidates.find((candidate) => fs.existsSync(path.join(candidate, "package.json")));
+  if (voiceDir) {
+    assertResolvableFromPaths(
+      "@snazzah/davey",
+      [voiceDir, openclawDir, nodeModulesDir],
+      "openclaw runtime is missing @snazzah/davey for @discordjs/voice resolution",
+    );
+  }
 }
 
 const runtimePackages = collectRuntimePackageNames();
@@ -350,6 +417,7 @@ fs.cpSync(sourceDir, stagingNodeModulesDir, {
 sanitizeOpenClawReactionEmojiLiterals(stagingNodeModulesDir);
 pruneBrokenSymlinksRecursively(stagingNodeModulesDir);
 pruneRuntimeSourceMaps(stagingNodeModulesDir);
+verifyOpenClawRuntimeLayout(stagingNodeModulesDir);
 
 // Ensure metadata from pnpm install is available in runtime fallback folder.
 const modulesMeta = path.join(root, "node_modules", ".modules.yaml");
@@ -365,5 +433,6 @@ rmDirWithRetries(backupDir, false);
 if (fs.existsSync(stagingDir)) {
   rmDirWithRetries(stagingDir, false);
 }
+verifyOpenClawRuntimeLayout(path.join(targetDir, "node_modules"));
 
 console.log(`Prepared runtime node_modules at ${targetDir}`);
