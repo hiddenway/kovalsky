@@ -85,6 +85,15 @@ function formatChatHistory(ctx: StepExecutionContext): string {
     .join("\n");
 }
 
+function requiresWorkspaceRelativeProjectPath(ctx: StepExecutionContext): boolean {
+  const combined = [
+    ctx.goal,
+    ctx.plannedNode.goalAddendum ?? "",
+    ctx.plannedNode.handoffContext ?? "",
+  ].join("\n");
+  return /(^|[\s"'`])\/project(?=[/\s"'`]|$)/i.test(combined);
+}
+
 function buildCodexGoal(ctx: StepExecutionContext): string {
   const parts: string[] = [];
   if (ctx.goal.trim()) {
@@ -123,6 +132,11 @@ function buildCodexGoal(ctx: StepExecutionContext): string {
   const hintLines = uniqueStrings([...launchHints, ...ctx.plannedNode.handoffTo.flatMap((item) => item.launchHints)]);
   if (hintLines.length > 0) {
     parts.push(`Launch hints:\n${hintLines.map((line) => `- ${line}`).join("\n")}`);
+  }
+
+  if (requiresWorkspaceRelativeProjectPath(ctx)) {
+    parts.push("Path policy: never create or use root-level /project.");
+    parts.push("When task text references /project, interpret it as ./project inside current workspace.");
   }
 
   parts.push(

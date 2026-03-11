@@ -15,7 +15,7 @@
       },
       "data": {
         "agentId": "codex-cli",
-        "goal": "Create a modern landing page for the startup.\n\nRequirements:\n- single page website\n- sections: hero, features, pricing, contact\n- responsive design\n- use HTML, CSS, JS + Tailwind CSS\n- save files in /project",
+        "goal": "Create a modern landing page for the startup.\n\nRequirements:\n- single page website\n- sections: hero, features, pricing, contact\n- responsive design\n- use HTML, CSS, JS + Tailwind CSS\n- save files in ./project",
         "customName": "Web Developer 👨‍💻 - MIKE"
       },
       "width": 320,

@@ -294,11 +294,21 @@ function shouldRequireBrowserChecks(ctx: StepExecutionContext): boolean {
   return browserKeywords.some((keyword) => text.includes(keyword));
 }
 
+function requiresWorkspaceRelativeProjectPath(ctx: StepExecutionContext): boolean {
+  const combined = [
+    ctx.goal,
+    ctx.plannedNode.goalAddendum ?? "",
+    ctx.plannedNode.handoffContext ?? "",
+  ].join("\n");
+  return /(^|[\s"'`])\/project(?=[/\s"'`]|$)/i.test(combined);
+}
+
 function buildAgentMessage(ctx: StepExecutionContext): string {
   const lines: string[] = [];
   const persistBackgroundProcesses = ctx.settings.persistBackgroundProcesses === true;
   const allowServerStopActions = shouldAllowServerStopActions(ctx);
   const requireBrowserChecks = shouldRequireBrowserChecks(ctx);
+  const useWorkspaceRelativeProjectPath = requiresWorkspaceRelativeProjectPath(ctx);
   if (ctx.goal.trim()) {
     lines.push(ctx.goal.trim());
   }
@@ -307,6 +317,10 @@ function buildAgentMessage(ctx: StepExecutionContext): string {
   }
   if (ctx.plannedNode.handoffContext?.trim()) {
     lines.push(`Planner handoff context: ${ctx.plannedNode.handoffContext.trim()}`);
+  }
+  if (useWorkspaceRelativeProjectPath) {
+    lines.push("Path policy: never create or use root-level /project.");
+    lines.push("When task text references /project, interpret it as ./project inside current workspace.");
   }
   const urlCandidates = collectResolvedUrlCandidates(ctx);
   if (urlCandidates.length > 0) {
@@ -724,8 +738,8 @@ export const openclawPlugin: AgentPlugin = {
         rootArgs.push("--profile", profile);
       }
 
-      const configuredArgs = asStringArray(ctx.settings.args);
       const mode = typeof ctx.settings.mode === "string" ? ctx.settings.mode : "agent-local";
+      const configuredArgs = mode === "raw" ? asStringArray(ctx.settings.args) : [];
       const modelOverride = resolveModelOverride(ctx.settings.model);
       let commandArgs: string[];
       let selectedAgentId: string | null = null;
@@ -751,7 +765,7 @@ export const openclawPlugin: AgentPlugin = {
           "--message",
           buildReportMessage(ctx),
         ];
-      } else if (configuredArgs.length > 0 || mode === "raw") {
+      } else if (mode === "raw" && configuredArgs.length > 0) {
         commandArgs = [...configuredArgs];
         const passGoalAsArg = ctx.settings.passGoalAsArg === true;
         if (passGoalAsArg && ctx.goal.trim()) {
