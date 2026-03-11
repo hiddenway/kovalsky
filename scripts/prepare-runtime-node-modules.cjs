@@ -248,6 +248,39 @@ function pruneBrokenSymlinksRecursively(rootDir) {
   }
 }
 
+function ensureDirSymlink(targetPath, linkPath) {
+  const relativeTarget = path.relative(path.dirname(linkPath), targetPath) || ".";
+  const linkType = process.platform === "win32" ? "junction" : "dir";
+  fs.symlinkSync(relativeTarget, linkPath, linkType);
+}
+
+function mirrorRuntimePackagesIntoNodeModules(nodeModulesDir, packages) {
+  const nestedNodeModulesDir = path.join(nodeModulesDir, "node_modules");
+  fs.mkdirSync(nestedNodeModulesDir, { recursive: true });
+
+  for (const packageName of packages) {
+    const sourcePath = path.join(nodeModulesDir, ...packageName.split("/"));
+    if (!fs.existsSync(sourcePath)) {
+      continue;
+    }
+
+    const destinationPath = path.join(nestedNodeModulesDir, ...packageName.split("/"));
+    fs.mkdirSync(path.dirname(destinationPath), { recursive: true });
+    rmDirWithRetries(destinationPath, false);
+
+    try {
+      ensureDirSymlink(sourcePath, destinationPath);
+    } catch {
+      // Fallback to a physical copy when symlinks are unavailable in the build environment.
+      fs.cpSync(sourcePath, destinationPath, {
+        recursive: true,
+        dereference: false,
+        verbatimSymlinks: true,
+      });
+    }
+  }
+}
+
 if (!fs.existsSync(sourceDir)) {
   throw new Error(`node_modules not found: ${sourceDir}`);
 }
@@ -265,6 +298,7 @@ fs.cpSync(sourceDir, stagingDir, {
   verbatimSymlinks: true,
   filter: shouldIncludeRuntimeEntry,
 });
+mirrorRuntimePackagesIntoNodeModules(stagingDir, runtimePackages);
 sanitizeOpenClawReactionEmojiLiterals(stagingDir);
 pruneBrokenSymlinksRecursively(stagingDir);
 
