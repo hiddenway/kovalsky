@@ -491,6 +491,16 @@ function ensureAgentSessionId(args: string[], sessionId: string): string[] {
   return [...args, "--session-id", sessionId];
 }
 
+function ensureAgentLocalJson(args: string[]): string[] {
+  if (args.length === 0 || args[0] !== "agent") {
+    return args;
+  }
+  if (!args.includes("--local") || args.includes("--json")) {
+    return args;
+  }
+  return [...args, "--json"];
+}
+
 function resolveModelOverride(input: unknown): string | null {
   if (typeof input !== "string") {
     return null;
@@ -779,6 +789,7 @@ export const openclawPlugin: AgentPlugin = {
           }
         }
         commandArgs = ensureAgentSessionId(commandArgs, buildSessionId(ctx));
+        commandArgs = ensureAgentLocalJson(commandArgs);
         selectedAgentId =
           (typeof ctx.settings.agentId === "string" && ctx.settings.agentId.trim())
             ? ctx.settings.agentId.trim()
