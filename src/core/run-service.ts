@@ -1054,13 +1054,6 @@ export class RunService {
       return true;
     }
 
-    // Also treat "port still responds/works" complaints as an explicit request to stop it again.
-    const hasStillCue = /(still|ещ[её]|вс[её]\s*так(же)?)/i.test(normalized);
-    const hasActiveCue = /(works?|running|respond|open|active|работает|отвечает|слушает|открыт)/i.test(normalized);
-    if (hasTarget && hasStillCue && hasActiveCue) {
-      return true;
-    }
-
     return false;
   }
 
@@ -1228,13 +1221,34 @@ export class RunService {
     followupPrompt?: string,
     mode: NodeChatContextMode = "light",
   ): string {
-    const parts = [baseGoal];
-    if (followupPrompt?.trim()) {
-      parts.push(`Follow-up request from workflow chat:\n${followupPrompt.trim()}`);
+    const goal = baseGoal.trim();
+    const followup = followupPrompt?.trim() ?? "";
+    const context = recentChatContext.trim();
+
+    if (mode === "strict" && followup) {
+      const strictParts: string[] = [
+        "Execution mode: STRICT_CHAT_OVERRIDE.",
+        `Primary objective from latest workflow chat (execute now):\n${followup}`,
+        "Conflict policy: if base goal or older context conflicts with the latest workflow chat objective, ignore conflicting parts and prioritize the latest workflow chat objective.",
+        "Recovery policy: if latest message indicates previous expected result was not achieved yet, continue and complete the latest unresolved user action from recent chat context.",
+      ];
+
+      if (context) {
+        strictParts.push(`Recent workflow chat context (strict mode):\n${context}`);
+      }
+      if (goal) {
+        strictParts.push(`Base node goal (reference only):\n${goal}`);
+      }
+      return strictParts.join("\n\n");
     }
-    if (recentChatContext.trim()) {
+
+    const parts = [goal];
+    if (followup) {
+      parts.push(`Follow-up request from workflow chat:\n${followup}`);
+    }
+    if (context) {
       const label = mode === "strict" ? "Recent workflow chat context (strict mode)" : "Recent workflow chat context";
-      parts.push(`${label}:\n${recentChatContext.trim()}`);
+      parts.push(`${label}:\n${context}`);
     }
     if (mode === "strict") {
       parts.push("Chat-context mode is STRICT: if chat context conflicts with base goal, prioritize the latest user request from chat.");
