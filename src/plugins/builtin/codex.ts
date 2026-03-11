@@ -91,7 +91,7 @@ function requiresWorkspaceRelativeProjectPath(ctx: StepExecutionContext): boolea
     ctx.plannedNode.goalAddendum ?? "",
     ctx.plannedNode.handoffContext ?? "",
   ].join("\n");
-  return /(^|[\s"'`])\/project(?=[/\s"'`]|$)/i.test(combined);
+  return /(^|[\s"'`])\/projects?(?=[/\s"'`]|$)/i.test(combined);
 }
 
 function buildCodexGoal(ctx: StepExecutionContext): string {
@@ -135,8 +135,8 @@ function buildCodexGoal(ctx: StepExecutionContext): string {
   }
 
   if (requiresWorkspaceRelativeProjectPath(ctx)) {
-    parts.push("Path policy: never create or use root-level /project.");
-    parts.push("When task text references /project, interpret it as ./project inside current workspace.");
+    parts.push("Path policy: never create or use root-level /project or /projects.");
+    parts.push("When task text references /project or /projects, interpret it as ./project inside current workspace.");
   }
 
   parts.push(

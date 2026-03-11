@@ -300,7 +300,7 @@ function requiresWorkspaceRelativeProjectPath(ctx: StepExecutionContext): boolea
     ctx.plannedNode.goalAddendum ?? "",
     ctx.plannedNode.handoffContext ?? "",
   ].join("\n");
-  return /(^|[\s"'`])\/project(?=[/\s"'`]|$)/i.test(combined);
+  return /(^|[\s"'`])\/projects?(?=[/\s"'`]|$)/i.test(combined);
 }
 
 function buildAgentMessage(ctx: StepExecutionContext): string {
@@ -319,8 +319,8 @@ function buildAgentMessage(ctx: StepExecutionContext): string {
     lines.push(`Planner handoff context: ${ctx.plannedNode.handoffContext.trim()}`);
   }
   if (useWorkspaceRelativeProjectPath) {
-    lines.push("Path policy: never create or use root-level /project.");
-    lines.push("When task text references /project, interpret it as ./project inside current workspace.");
+    lines.push("Path policy: never create or use root-level /project or /projects.");
+    lines.push("When task text references /project or /projects, interpret it as ./project inside current workspace.");
   }
   const urlCandidates = collectResolvedUrlCandidates(ctx);
   if (urlCandidates.length > 0) {
