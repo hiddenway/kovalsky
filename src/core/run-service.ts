@@ -963,12 +963,12 @@ export class RunService {
       const decision = this.extractModelRerunDecision(report);
       const cleaned = this.cleanReportReply(report);
       if (cleaned) {
-        return {
+        return this.applyImmediateFollowupPolicy(input.prompt, {
           reply: cleaned,
           decision,
-        };
+        });
       }
-      return {
+      return this.applyImmediateFollowupPolicy(input.prompt, {
         reply: this.buildFallbackFollowupReply({
           prompt: input.prompt,
           status: stepRun.status,
@@ -977,7 +977,7 @@ export class RunService {
           urls: this.extractUrls(stepArtifacts),
         }),
         decision,
-      };
+      });
     } catch (error) {
       this.logger.warn(
         { err: error, runId: input.runId, nodeId: input.nodeId, stepRunId: stepRun.id },
@@ -985,7 +985,7 @@ export class RunService {
       );
     }
 
-    return {
+    return this.applyImmediateFollowupPolicy(input.prompt, {
       reply: this.buildFallbackFollowupReply({
         prompt: input.prompt,
         status: stepRun.status,
@@ -994,7 +994,7 @@ export class RunService {
         urls: this.extractUrls(stepArtifacts),
       }),
       decision: "no_rerun",
-    };
+    });
   }
 
   private extractModelRerunDecision(raw: string): FollowupRerunDecision {
@@ -1019,6 +1019,42 @@ export class RunService {
       .replace(/\s*KOVALSKY_DECISION:\s*[^\r\n]+/gi, "")
       .replace(/\s{2,}/g, " ")
       .trim();
+  }
+
+  private applyImmediateFollowupPolicy(prompt: string, result: FollowupReplyResult): FollowupReplyResult {
+    if (!this.isImmediateStopServerRequest(prompt)) {
+      return result;
+    }
+
+    return {
+      reply: this.isLikelyRussianText(prompt)
+        ? "Останавливаю сервер сейчас."
+        : "Stopping the server now.",
+      decision: "rerun",
+    };
+  }
+
+  private isImmediateStopServerRequest(prompt: string): boolean {
+    const normalized = prompt.trim().toLowerCase();
+    if (!normalized) {
+      return false;
+    }
+
+    if (/^(how|как)\b/.test(normalized)) {
+      return false;
+    }
+
+    const hasImperative = /(останови|выключи|отключи|заверши|убей|stop|shutdown|shut\s+down|terminate|kill)/i.test(normalized);
+    if (!hasImperative) {
+      return false;
+    }
+
+    const hasTarget = /(server|сервер|port|порт|background|фонов)/i.test(normalized);
+    return hasTarget;
+  }
+
+  private isLikelyRussianText(input: string): boolean {
+    return /[А-Яа-яЁё]/.test(input);
   }
 
   private resolveNodePlan(runId: string, node: PipelineGraphNode): NodeExecutionPlan {
