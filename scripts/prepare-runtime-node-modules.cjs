@@ -16,6 +16,14 @@ const packageJson = fs.existsSync(packageJsonPath)
 const devOnlyTopLevel = new Set(Object.keys(packageJson.devDependencies ?? {}));
 const rootProductionDeps = Object.keys(packageJson.dependencies ?? {});
 const openClawCriticalPackages = ["@discordjs/voice", "@snazzah/davey", "tslog"];
+const codexPlatformPackageByTarget = {
+  "linux:x64": "@openai/codex-linux-x64",
+  "linux:arm64": "@openai/codex-linux-arm64",
+  "darwin:x64": "@openai/codex-darwin-x64",
+  "darwin:arm64": "@openai/codex-darwin-arm64",
+  "win32:x64": "@openai/codex-win32-x64",
+  "win32:arm64": "@openai/codex-win32-arm64",
+};
 
 function packageDirForName(packageName) {
   return path.join(sourceDir, ...packageName.split("/"));
@@ -69,6 +77,7 @@ function resolveInstalledPackageDir(packageName, fromDir) {
 
 function collectRuntimePackageNames() {
   const packageNames = new Set();
+  const resolvedSpecifiers = new Set();
   const visitedDirs = new Set();
   const queue = [];
   const enqueueByName = (packageName, fromDir) => {
@@ -79,6 +88,7 @@ function collectRuntimePackageNames() {
     if (!resolvedDir) {
       return;
     }
+    resolvedSpecifiers.add(packageName);
 
     let realDir = resolvedDir;
     try {
@@ -129,7 +139,10 @@ function collectRuntimePackageNames() {
     }
   }
 
-  return packageNames;
+  return {
+    packageNames,
+    resolvedSpecifiers,
+  };
 }
 
 function assertRuntimePathExists(targetPath, reason) {
@@ -187,7 +200,40 @@ function verifyOpenClawRuntimeLayout(nodeModulesDir) {
   }
 }
 
-const runtimePackages = collectRuntimePackageNames();
+function detectCodexPlatformPackage() {
+  const key = `${process.platform}:${process.arch}`;
+  return codexPlatformPackageByTarget[key] ?? null;
+}
+
+function verifyCodexRuntimeLayout(nodeModulesDir) {
+  const codexDir = path.join(nodeModulesDir, "@openai", "codex");
+  if (!fs.existsSync(path.join(codexDir, "package.json"))) {
+    return;
+  }
+
+  const expectedPlatformPackage = detectCodexPlatformPackage();
+  if (!expectedPlatformPackage) {
+    return;
+  }
+
+  const expectedPackagePath = path.join(nodeModulesDir, ...expectedPlatformPackage.split("/"), "package.json");
+  assertRuntimePathExists(
+    expectedPackagePath,
+    `codex optional platform package missing (${expectedPlatformPackage}) in runtime node_modules`,
+  );
+
+  assertResolvableFromPaths(
+    `${expectedPlatformPackage}/package.json`,
+    [codexDir, nodeModulesDir],
+    `codex optional platform package is not resolvable (${expectedPlatformPackage})`,
+  );
+}
+
+const runtimePackageSelection = collectRuntimePackageNames();
+const runtimePackages = new Set([
+  ...runtimePackageSelection.packageNames,
+  ...runtimePackageSelection.resolvedSpecifiers,
+]);
 const runtimeScopes = new Set(
   [...runtimePackages]
     .filter((name) => name.startsWith("@"))
@@ -418,6 +464,7 @@ sanitizeOpenClawReactionEmojiLiterals(stagingNodeModulesDir);
 pruneBrokenSymlinksRecursively(stagingNodeModulesDir);
 pruneRuntimeSourceMaps(stagingNodeModulesDir);
 verifyOpenClawRuntimeLayout(stagingNodeModulesDir);
+verifyCodexRuntimeLayout(stagingNodeModulesDir);
 
 // Ensure metadata from pnpm install is available in runtime fallback folder.
 const modulesMeta = path.join(root, "node_modules", ".modules.yaml");
@@ -434,5 +481,6 @@ if (fs.existsSync(stagingDir)) {
   rmDirWithRetries(stagingDir, false);
 }
 verifyOpenClawRuntimeLayout(path.join(targetDir, "node_modules"));
+verifyCodexRuntimeLayout(path.join(targetDir, "node_modules"));
 
 console.log(`Prepared runtime node_modules at ${targetDir}`);
