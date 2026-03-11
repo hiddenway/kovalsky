@@ -351,9 +351,6 @@ class RestKovalskyApiClient implements KovalskyApiClient {
   async deleteProvider(credentialId: string) {
     const response = await this.fetchWithFallback(`/providers/${credentialId}`, {
       method: "DELETE",
-      headers: {
-        "Content-Type": "application/json",
-      },
     });
 
     if (!response.ok) {
