@@ -53,16 +53,21 @@ jobs:
       - name: Build app bundle
         run: pnpm run build:app
 
+      - name: Resolve app version
+        id: app_version
+        run: |
+          node -e "const fs=require('node:fs');const pkg=require('./package.json');const isTag=process.env.GITHUB_REF_TYPE==='tag';const refName=process.env.GITHUB_REF_NAME||'';const version=isTag&&refName?(refName.startsWith('v')?refName.slice(1):refName):pkg.version;fs.appendFileSync(process.env.GITHUB_OUTPUT,'version='+version+'\n');console.log('Using app version: '+version);"
+
       - name: Build Electron distributable (Unix)
         if: runner.os != 'Windows'
         shell: bash
         run: |
           ulimit -n 8192 || true
-          pnpm exec electron-builder ${{ matrix.platform.target }} --publish never
+          pnpm exec electron-builder ${{ matrix.platform.target }} --publish never --config.extraMetadata.version=${{ steps.app_version.outputs.version }}
 
       - name: Build Electron distributable (Windows)
         if: runner.os == 'Windows'
-        run: pnpm exec electron-builder ${{ matrix.platform.target }} --publish never
+        run: pnpm exec electron-builder ${{ matrix.platform.target }} --publish never --config.extraMetadata.version=${{ steps.app_version.outputs.version }}
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
