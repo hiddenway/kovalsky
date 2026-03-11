@@ -642,6 +642,41 @@ function prepareIsolatedStateDir(ctx: StepExecutionContext): PreparedOpenClawSta
   }
 }
 
+function toIsoDate(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function ensureWorkspaceMemoryScaffold(workspacePath: string): void {
+  const normalizedWorkspace = workspacePath.trim();
+  if (!normalizedWorkspace) {
+    return;
+  }
+
+  try {
+    const memoryFilePath = path.join(normalizedWorkspace, "MEMORY.md");
+    if (!fs.existsSync(memoryFilePath)) {
+      fs.writeFileSync(memoryFilePath, "# Memory\n\n", "utf8");
+    }
+
+    const memoryDir = path.join(normalizedWorkspace, "memory");
+    fs.mkdirSync(memoryDir, { recursive: true });
+
+    for (const daysBack of [0, 1]) {
+      const targetDate = new Date();
+      targetDate.setDate(targetDate.getDate() - daysBack);
+      const memoryDailyPath = path.join(memoryDir, `${toIsoDate(targetDate)}.md`);
+      if (!fs.existsSync(memoryDailyPath)) {
+        fs.writeFileSync(memoryDailyPath, "# Daily Memory\n\n", "utf8");
+      }
+    }
+  } catch {
+    // Keep execution running even if workspace is read-only or inaccessible.
+  }
+}
+
 export const openclawPlugin: AgentPlugin = {
   manifest: {
     id: "openclaw",
@@ -677,6 +712,7 @@ export const openclawPlugin: AgentPlugin = {
   adapter: {
     async prepareCommand(ctx) {
       const command = typeof ctx.settings.command === "string" ? ctx.settings.command : "openclaw";
+      ensureWorkspaceMemoryScaffold(ctx.workspacePath);
       const rootArgs: string[] = [];
       const statePrep = prepareIsolatedStateDir(ctx);
       const isolatedStateDir = statePrep.stateDir;
