@@ -518,7 +518,9 @@ function isUnsupportedCodexOauthModel(model: string): boolean {
   return normalized === "openai-codex/gpt-5.3-codex"
     || normalized === "gpt-5.3-codex"
     || normalized === "openai-codex/gpt-5.3-codex-spark"
-    || normalized === "gpt-5.3-codex-spark";
+    || normalized === "gpt-5.3-codex-spark"
+    || normalized === "openai-codex/gpt-5-codex"
+    || normalized === "gpt-5-codex";
 }
 
 function normalizeModelOverrideForAuth(model: string | null, env: NodeJS.ProcessEnv): string | null {
@@ -537,7 +539,7 @@ function normalizeModelOverrideForAuth(model: string | null, env: NodeJS.Process
     return model;
   }
 
-  return (env.KOVALSKY_OPENCLAW_CODEX_OAUTH_MODEL ?? "").trim() || "openai-codex/gpt-5-codex";
+  return (env.KOVALSKY_OPENCLAW_CODEX_OAUTH_MODEL ?? "").trim() || "openai-codex/gpt-5.2-codex";
 }
 
 function extractAgentIdFromArgs(args: string[]): string | null {

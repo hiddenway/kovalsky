@@ -1369,9 +1369,9 @@ export class RunService {
       return "openai/gpt-5.1-codex";
     }
 
-    // For any non-OpenAI-key auth token (OAuth-style), prefer a broadly compatible Codex model.
+    // For any non-OpenAI-key auth token (OAuth-style), prefer a model id known by current OpenClaw versions.
     const codexOauthDefault = (process.env.KOVALSKY_OPENCLAW_CODEX_OAUTH_MODEL ?? "").trim();
-    return codexOauthDefault || "openai-codex/gpt-5-codex";
+    return codexOauthDefault || "openai-codex/gpt-5.2-codex";
   }
 
   private isUnsupportedCodexOauthModel(model: string): boolean {
@@ -1379,7 +1379,9 @@ export class RunService {
     return normalized === "openai-codex/gpt-5.3-codex"
       || normalized === "gpt-5.3-codex"
       || normalized === "openai-codex/gpt-5.3-codex-spark"
-      || normalized === "gpt-5.3-codex-spark";
+      || normalized === "gpt-5.3-codex-spark"
+      || normalized === "openai-codex/gpt-5-codex"
+      || normalized === "gpt-5-codex";
   }
 
   private normalizeCodexOauthAgentModelOverrides(agents: Record<string, unknown>, fallbackModel: string): void {
