@@ -998,27 +998,27 @@ export class RunService {
   }
 
   private extractModelRerunDecision(raw: string): FollowupRerunDecision {
-    const lines = raw
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter(Boolean);
-
-    for (let index = lines.length - 1; index >= 0; index -= 1) {
-      const match = lines[index].match(/^KOVALSKY_DECISION:\s*(.+)$/i);
-      if (!match) {
-        continue;
-      }
-      const value = match[1].trim().toLowerCase();
-      if (value === "rerun" || value === "yes" || value === "true") {
-        return "rerun";
-      }
-      if (value === "no_rerun" || value === "no-rerun" || value === "no rerun" || value === "no" || value === "false") {
-        return "no_rerun";
-      }
+    const matches = [...raw.matchAll(/KOVALSKY_DECISION:\s*([^\r\n]+)/gi)];
+    if (matches.length === 0) {
       return "unknown";
     }
 
+    const value = (matches.at(-1)?.[1] ?? "").trim().toLowerCase();
+    if (value === "rerun" || value === "yes" || value === "true") {
+      return "rerun";
+    }
+    if (value === "no_rerun" || value === "no-rerun" || value === "no rerun" || value === "no" || value === "false") {
+      return "no_rerun";
+    }
+
     return "unknown";
+  }
+
+  private stripInlineDecisionMarkers(line: string): string {
+    return line
+      .replace(/\s*KOVALSKY_DECISION:\s*[^\r\n]+/gi, "")
+      .replace(/\s{2,}/g, " ")
+      .trim();
   }
 
   private resolveNodePlan(runId: string, node: PipelineGraphNode): NodeExecutionPlan {
@@ -1535,7 +1535,7 @@ export class RunService {
     const normalizedRaw = raw.replace(/```[\s\S]*?```/g, "\n");
     const lines = normalizedRaw
       .split(/\r?\n/)
-      .map((line) => line.trim())
+      .map((line) => this.stripInlineDecisionMarkers(line))
       .filter(Boolean)
       .filter((line) => !/^step completed successfully\.?$/i.test(line))
       .filter((line) => !/^agent$/i.test(line))
@@ -1611,7 +1611,7 @@ export class RunService {
   private sanitizeChatHistoryContent(raw: string): string {
     return raw
       .split(/\r?\n/)
-      .map((line) => line.trim())
+      .map((line) => this.stripInlineDecisionMarkers(line))
       .filter(Boolean)
       .filter((line) => !/^step completed successfully\.?$/i.test(line))
       .filter((line) => !/^agent$/i.test(line))
