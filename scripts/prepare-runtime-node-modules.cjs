@@ -7,6 +7,7 @@ const targetDir = path.join(root, ".runtime-node_modules");
 const tempTag = `${Date.now()}-${process.pid}`;
 const stagingDir = path.join(root, `.runtime-node_modules.__staging__${tempTag}`);
 const backupDir = path.join(root, `.runtime-node_modules.__backup__${tempTag}`);
+const stagingNodeModulesDir = path.join(stagingDir, "node_modules");
 const OPENCLAW_REACTION_SUFFIX = path.join("openclaw", "extensions", "zalouser", "src", "reaction.ts");
 const packageJsonPath = path.join(root, "package.json");
 const packageJson = fs.existsSync(packageJsonPath)
@@ -248,35 +249,26 @@ function pruneBrokenSymlinksRecursively(rootDir) {
   }
 }
 
-function ensureDirSymlink(targetPath, linkPath) {
-  const relativeTarget = path.relative(path.dirname(linkPath), targetPath) || ".";
-  const linkType = process.platform === "win32" ? "junction" : "dir";
-  fs.symlinkSync(relativeTarget, linkPath, linkType);
-}
+function pruneRuntimeSourceMaps(rootDir) {
+  if (!fs.existsSync(rootDir)) {
+    return;
+  }
 
-function mirrorRuntimePackagesIntoNodeModules(nodeModulesDir, packages) {
-  const nestedNodeModulesDir = path.join(nodeModulesDir, "node_modules");
-  fs.mkdirSync(nestedNodeModulesDir, { recursive: true });
-
-  for (const packageName of packages) {
-    const sourcePath = path.join(nodeModulesDir, ...packageName.split("/"));
-    if (!fs.existsSync(sourcePath)) {
-      continue;
-    }
-
-    const destinationPath = path.join(nestedNodeModulesDir, ...packageName.split("/"));
-    fs.mkdirSync(path.dirname(destinationPath), { recursive: true });
-    rmDirWithRetries(destinationPath, false);
-
-    try {
-      ensureDirSymlink(sourcePath, destinationPath);
-    } catch {
-      // Fallback to a physical copy when symlinks are unavailable in the build environment.
-      fs.cpSync(sourcePath, destinationPath, {
-        recursive: true,
-        dereference: false,
-        verbatimSymlinks: true,
-      });
+  const queue = [rootDir];
+  while (queue.length > 0) {
+    const currentDir = queue.pop();
+    for (const entry of fs.readdirSync(currentDir, { withFileTypes: true })) {
+      const fullPath = path.join(currentDir, entry.name);
+      if (entry.isDirectory()) {
+        queue.push(fullPath);
+        continue;
+      }
+      if (!entry.isFile()) {
+        continue;
+      }
+      if (entry.name.endsWith(".map")) {
+        fs.rmSync(fullPath, { force: true });
+      }
     }
   }
 }
@@ -292,20 +284,20 @@ sanitizeOpenClawReactionEmojiLiterals(sourceDir);
 
 // Copy runtime dependencies into a non-special folder so electron-builder
 // does not prune/transitively drop modules required by backend child process.
-fs.cpSync(sourceDir, stagingDir, {
+fs.cpSync(sourceDir, stagingNodeModulesDir, {
   recursive: true,
   dereference: false,
   verbatimSymlinks: true,
   filter: shouldIncludeRuntimeEntry,
 });
-mirrorRuntimePackagesIntoNodeModules(stagingDir, runtimePackages);
-sanitizeOpenClawReactionEmojiLiterals(stagingDir);
-pruneBrokenSymlinksRecursively(stagingDir);
+sanitizeOpenClawReactionEmojiLiterals(stagingNodeModulesDir);
+pruneBrokenSymlinksRecursively(stagingNodeModulesDir);
+pruneRuntimeSourceMaps(stagingNodeModulesDir);
 
 // Ensure metadata from pnpm install is available in runtime fallback folder.
 const modulesMeta = path.join(root, "node_modules", ".modules.yaml");
 if (fs.existsSync(modulesMeta)) {
-  fs.copyFileSync(modulesMeta, path.join(stagingDir, ".modules.yaml"));
+  fs.copyFileSync(modulesMeta, path.join(stagingNodeModulesDir, ".modules.yaml"));
 }
 
 if (fs.existsSync(targetDir)) {

@@ -644,11 +644,16 @@ export class ToolchainService {
     const argvScriptDir = path.dirname(process.argv[1] ?? "");
     const resourcesPath = (process as NodeJS.Process & { resourcesPath?: string }).resourcesPath ?? "";
     const candidates = [
+      path.join(process.cwd(), ".runtime-node_modules", "node_modules", ".bin", binaryName),
       path.join(process.cwd(), ".runtime-node_modules", ".bin", binaryName),
       path.join(process.cwd(), "node_modules", ".bin", binaryName),
+      path.join(argvScriptDir, ".runtime-node_modules", "node_modules", ".bin", binaryName),
       path.join(argvScriptDir, ".runtime-node_modules", ".bin", binaryName),
+      path.join(path.resolve(argvScriptDir, ".."), ".runtime-node_modules", "node_modules", ".bin", binaryName),
       path.join(path.resolve(argvScriptDir, ".."), ".runtime-node_modules", ".bin", binaryName),
+      path.join(resourcesPath, "app", ".runtime-node_modules", "node_modules", ".bin", binaryName),
       path.join(resourcesPath, "app", ".runtime-node_modules", ".bin", binaryName),
+      path.join(resourcesPath, ".runtime-node_modules", "node_modules", ".bin", binaryName),
       path.join(resourcesPath, ".runtime-node_modules", ".bin", binaryName),
       path.join(resourcesPath, "app", "node_modules", ".bin", binaryName),
       path.join(resourcesPath, "node_modules", ".bin", binaryName),

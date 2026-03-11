@@ -122,8 +122,16 @@ function stopChild(child) {
 async function startServices() {
   const root = appRootDir();
   const runtimeNodeModules = path.join(root, ".runtime-node_modules");
-  const runtimeNodeBin = path.join(runtimeNodeModules, ".bin");
+  const runtimeNodeModulesNested = path.join(runtimeNodeModules, "node_modules");
+  const runtimeNodeBinCandidates = [
+    path.join(runtimeNodeModulesNested, ".bin"),
+    path.join(runtimeNodeModules, ".bin"),
+  ];
+  const runtimeNodeBin = runtimeNodeBinCandidates.find((candidate) => fs.existsSync(candidate)) ?? "";
   const nodePathParts = [];
+  if (fs.existsSync(runtimeNodeModulesNested)) {
+    nodePathParts.push(runtimeNodeModulesNested);
+  }
   if (fs.existsSync(runtimeNodeModules)) {
     nodePathParts.push(runtimeNodeModules);
   }
