@@ -77,6 +77,26 @@ export class ProcessManager {
     return absoluteEntrypoint;
   }
 
+  private resolvePreferredNodeEntrypoint(entrypoint: string): string {
+    const normalized = entrypoint.replace(/\\/g, "/");
+    if (!normalized.endsWith("/openclaw/openclaw.mjs")) {
+      return entrypoint;
+    }
+
+    const packageRoot = path.dirname(entrypoint);
+    const candidates = [
+      path.join(packageRoot, "dist", "entry.js"),
+      path.join(packageRoot, "dist", "entry.mjs"),
+    ];
+    for (const candidate of candidates) {
+      if (fs.existsSync(candidate)) {
+        return candidate;
+      }
+    }
+
+    return entrypoint;
+  }
+
   private resolveNodeCommand(env: NodeJS.ProcessEnv): string {
     const override = env.KOVALSKY_NODE_PATH?.trim();
     if (override && fs.existsSync(override)) {
@@ -137,8 +157,9 @@ export class ProcessManager {
 
       const binEntrypoint = this.resolveBinWrapperEntrypoint(input.command);
       if (binEntrypoint) {
+        const preferredEntrypoint = this.resolvePreferredNodeEntrypoint(binEntrypoint);
         command = this.resolveNodeCommand(input.env);
-        args = [binEntrypoint, ...input.args];
+        args = [preferredEntrypoint, ...input.args];
         if (command === process.execPath) {
           env = {
             ...input.env,
