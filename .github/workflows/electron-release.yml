@@ -53,12 +53,16 @@ jobs:
       - name: Build app bundle
         run: pnpm run build:app
 
-      - name: Build Electron distributable
+      - name: Build Electron distributable (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
         run: |
-          if [[ "${{ runner.os }}" != "Windows" ]]; then
-            ulimit -n 8192 || true
-          fi
+          ulimit -n 8192 || true
           pnpm exec electron-builder ${{ matrix.platform.target }} --publish never
+
+      - name: Build Electron distributable (Windows)
+        if: runner.os == 'Windows'
+        run: pnpm exec electron-builder ${{ matrix.platform.target }} --publish never
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
