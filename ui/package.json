@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "env -u NODE_PATH pnpm exec next dev",
-    "build": "env -u NODE_PATH pnpm exec next build",
+    "build": "env -u NODE_PATH pnpm exec next build --webpack",
     "start": "env -u NODE_PATH pnpm exec next start",
     "lint": "eslint"
   },
