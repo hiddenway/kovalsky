@@ -20,9 +20,7 @@ function packageDirForName(packageName) {
   return path.join(sourceDir, ...packageName.split("/"));
 }
 
-function readPackageJsonSafe(packageName) {
-  const packageDir = packageDirForName(packageName);
-  const filePath = path.join(packageDir, "package.json");
+function readJsonFileSafe(filePath) {
   if (!fs.existsSync(filePath)) {
     return null;
   }
@@ -34,31 +32,106 @@ function readPackageJsonSafe(packageName) {
   }
 }
 
-function collectRuntimePackageNames() {
-  const queue = [...rootProductionDeps];
-  const visited = new Set();
+function readPackageJsonCandidates(packageName) {
+  const out = [];
+  const seenRealPaths = new Set();
 
-  while (queue.length > 0) {
-    const packageName = queue.shift();
-    if (!packageName || visited.has(packageName)) {
+  const packageDir = packageDirForName(packageName);
+  const topLevelPath = path.join(packageDir, "package.json");
+  const topLevelPkg = readJsonFileSafe(topLevelPath);
+  if (topLevelPkg) {
+    out.push(topLevelPkg);
+    try {
+      seenRealPaths.add(fs.realpathSync(topLevelPath));
+    } catch {
+      // ignore realpath errors and keep best-effort candidate list
+    }
+  }
+
+  const pnpmStoreDir = path.join(sourceDir, ".pnpm");
+  if (!fs.existsSync(pnpmStoreDir)) {
+    return out;
+  }
+
+  const packagePrefix = `${packageName.replace("/", "+")}@`;
+  for (const entry of fs.readdirSync(pnpmStoreDir, { withFileTypes: true })) {
+    if (!entry.isDirectory() || !entry.name.startsWith(packagePrefix)) {
       continue;
     }
-
-    visited.add(packageName);
-    const pkg = readPackageJsonSafe(packageName);
+    const candidatePath = path.join(pnpmStoreDir, entry.name, "node_modules", ...packageName.split("/"), "package.json");
+    const pkg = readJsonFileSafe(candidatePath);
     if (!pkg) {
       continue;
     }
 
-    const dependencies = Object.keys(pkg.dependencies ?? {});
-    const optionalDependencies = Object.keys(pkg.optionalDependencies ?? {});
+    try {
+      const realPath = fs.realpathSync(candidatePath);
+      if (seenRealPaths.has(realPath)) {
+        continue;
+      }
+      seenRealPaths.add(realPath);
+    } catch {
+      // ignore realpath errors and still include candidate
+    }
 
+    out.push(pkg);
+  }
+
+  return out;
+}
+
+function collectRuntimePackageNames() {
+  const queue = [...rootProductionDeps];
+  const visited = new Set();
+  const processQueue = () => {
+    while (queue.length > 0) {
+      const packageName = queue.shift();
+      if (!packageName || visited.has(packageName)) {
+        continue;
+      }
+
+      visited.add(packageName);
+      const packageJsonCandidates = readPackageJsonCandidates(packageName);
+      if (packageJsonCandidates.length === 0) {
+        continue;
+      }
+
+      for (const pkg of packageJsonCandidates) {
+        const dependencies = Object.keys(pkg.dependencies ?? {});
+        const optionalDependencies = Object.keys(pkg.optionalDependencies ?? {});
+        for (const depName of [...dependencies, ...optionalDependencies]) {
+          if (!visited.has(depName)) {
+            queue.push(depName);
+          }
+        }
+      }
+    }
+  };
+
+  processQueue();
+
+  // Some dependencies are nested under openclaw and can be a newer version
+  // than the top-level hoisted package. Include them explicitly so runtime
+  // payload keeps required transitive deps (e.g. @snazzah/davey for @discordjs/voice@0.19.1).
+  const openClawNestedVoicePath = path.join(
+    sourceDir,
+    "openclaw",
+    "node_modules",
+    "@discordjs",
+    "voice",
+    "package.json",
+  );
+  const openClawNestedVoicePkg = readJsonFileSafe(openClawNestedVoicePath);
+  if (openClawNestedVoicePkg) {
+    const dependencies = Object.keys(openClawNestedVoicePkg.dependencies ?? {});
+    const optionalDependencies = Object.keys(openClawNestedVoicePkg.optionalDependencies ?? {});
     for (const depName of [...dependencies, ...optionalDependencies]) {
       if (!visited.has(depName)) {
         queue.push(depName);
       }
     }
   }
+  processQueue();
 
   return visited;
 }
