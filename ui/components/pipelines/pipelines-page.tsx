@@ -14,6 +14,7 @@ type DirectoryPickerWindow = Window & {
   showDirectoryPicker?: () => Promise<{ name: string }>;
   kovalskyDesktop?: {
     pickWorkspaceDirectory?: () => Promise<string | null>;
+    openExternalUrl?: (url: string) => Promise<boolean>;
   };
 };
 
@@ -480,7 +481,12 @@ export function PipelinesPage(): React.JSX.Element {
         messageParts.push(`Verification code: ${login.deviceCode}.`);
       }
       if (login.deviceAuthUrl) {
-        window.open(login.deviceAuthUrl, "_blank", "noopener,noreferrer");
+        const desktopWindow = window as DirectoryPickerWindow;
+        if (typeof desktopWindow.kovalskyDesktop?.openExternalUrl === "function") {
+          await desktopWindow.kovalskyDesktop.openExternalUrl(login.deviceAuthUrl);
+        } else {
+          window.open(login.deviceAuthUrl, "_blank", "noopener,noreferrer");
+        }
         messageParts.push("Complete authentication in the browser tab that was opened.");
       } else {
         messageParts.push("Complete browser auth; this dialog will close automatically.");

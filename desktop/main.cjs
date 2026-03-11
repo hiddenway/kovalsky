@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog, ipcMain } = require("electron");
+const { app, BrowserWindow, dialog, ipcMain, shell } = require("electron");
 const { spawn } = require("node:child_process");
 const os = require("node:os");
 const path = require("node:path");
@@ -190,6 +190,36 @@ async function createMainWindow() {
     },
   });
 
+  const isUiUrl = (url) => {
+    try {
+      const parsed = new URL(url);
+      return (parsed.hostname === UI_HOST || parsed.hostname === "localhost")
+        && parsed.port === String(UI_PORT);
+    } catch {
+      return false;
+    }
+  };
+
+  window.webContents.setWindowOpenHandler(({ url }) => {
+    if (isUiUrl(url)) {
+      return { action: "allow" };
+    }
+    if (url.startsWith("http://") || url.startsWith("https://")) {
+      void shell.openExternal(url);
+    }
+    return { action: "deny" };
+  });
+
+  window.webContents.on("will-navigate", (event, url) => {
+    if (isUiUrl(url)) {
+      return;
+    }
+    event.preventDefault();
+    if (url.startsWith("http://") || url.startsWith("https://")) {
+      void shell.openExternal(url);
+    }
+  });
+
   await window.loadURL(`http://${UI_HOST}:${UI_PORT}/pipelines`);
 }
 
@@ -202,6 +232,22 @@ ipcMain.handle("kovalsky:pick-workspace-directory", async () => {
     return null;
   }
   return result.filePaths[0];
+});
+
+ipcMain.handle("kovalsky:open-external-url", async (_event, rawUrl) => {
+  const url = typeof rawUrl === "string" ? rawUrl.trim() : "";
+  if (!url) {
+    return false;
+  }
+  if (!url.startsWith("http://") && !url.startsWith("https://")) {
+    return false;
+  }
+  try {
+    await shell.openExternal(url);
+    return true;
+  } catch {
+    return false;
+  }
 });
 
 app.on("before-quit", () => {

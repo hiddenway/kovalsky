@@ -18,6 +18,12 @@ type ProviderRecord = {
 type CodexAuthMode = "openai_api_key" | "codex_login";
 type GatewayStatus = "checking" | "connected" | "disconnected";
 
+type DesktopWindow = Window & {
+  kovalskyDesktop?: {
+    openExternalUrl?: (url: string) => Promise<boolean>;
+  };
+};
+
 function parseGatewayBaseUrl(baseUrl: string): { host: string; port: string } {
   try {
     const parsed = new URL(baseUrl);
@@ -273,7 +279,12 @@ export function SettingsPage(): React.JSX.Element {
         messageParts.push(`Verification code: ${login.deviceCode}.`);
       }
       if (login.deviceAuthUrl) {
-        window.open(login.deviceAuthUrl, "_blank", "noopener,noreferrer");
+        const desktopWindow = window as DesktopWindow;
+        if (typeof desktopWindow.kovalskyDesktop?.openExternalUrl === "function") {
+          await desktopWindow.kovalskyDesktop.openExternalUrl(login.deviceAuthUrl);
+        } else {
+          window.open(login.deviceAuthUrl, "_blank", "noopener,noreferrer");
+        }
         messageParts.push("Complete authentication in the browser tab that was opened.");
       } else {
         messageParts.push("Complete browser auth; this page will update automatically.");
