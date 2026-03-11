@@ -309,6 +309,22 @@ export class ToolchainService {
     args: string[];
     env: NodeJS.ProcessEnv;
   } {
+    const binEntrypoint = this.resolveBinWrapperEntrypoint(command);
+    if (binEntrypoint) {
+      const nodeCommand = this.resolveNodeCommand();
+      const env: NodeJS.ProcessEnv = {
+        ...process.env,
+      };
+      if (nodeCommand === process.execPath) {
+        env.ELECTRON_RUN_AS_NODE = "1";
+      }
+      return {
+        command: nodeCommand,
+        args: [binEntrypoint, ...args],
+        env,
+      };
+    }
+
     if (!this.isNodeScriptCommand(command)) {
       return {
         command,
@@ -328,6 +344,39 @@ export class ToolchainService {
       args: [command, ...args],
       env,
     };
+  }
+
+  private resolveBinWrapperEntrypoint(command: string): string | null {
+    if (!command || !fs.existsSync(command)) {
+      return null;
+    }
+
+    const normalizedCommand = command.replace(/\\/g, "/");
+    if (!normalizedCommand.includes("/.bin/")) {
+      return null;
+    }
+
+    let source = "";
+    try {
+      source = fs.readFileSync(command, "utf8");
+    } catch {
+      return null;
+    }
+
+    const unixMatch = source.match(/\$basedir\/(\.\.\/[^\s"'`]+?\.(?:cjs|mjs|js))/);
+    const windowsMatch = source.match(/%~dp0\\([^"\r\n]+?\.(?:cjs|mjs|js))/i);
+    const relativeEntrypoint = (unixMatch?.[1] ?? windowsMatch?.[1] ?? "").trim();
+    if (!relativeEntrypoint) {
+      return null;
+    }
+
+    const normalizedRelative = relativeEntrypoint.replace(/\\/g, "/");
+    const absoluteEntrypoint = path.resolve(path.dirname(command), normalizedRelative);
+    if (!fs.existsSync(absoluteEntrypoint)) {
+      return null;
+    }
+
+    return absoluteEntrypoint;
   }
 
   private getManagedBinaryPath(tool: KnownTool): string | null {
