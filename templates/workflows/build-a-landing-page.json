@@ -3,8 +3,9 @@
   "name": "Build a Landing Page",
   "description": "",
   "tags": [],
-  "workspacePath": "~/Desktop/BaseKovalsky/Landing Page Builder",
-  "chatRerunMode": "pipeline",
+  "workspacePath": "~/ttt",
+  "chatRerunMode": "node",
+  "clearNodeChatContextOnRun": false,
   "nodes": [
     {
       "id": "node-af169ebd-f3bb-4dcd-aa00-2d70cca96cd9",
@@ -33,15 +34,11 @@
       "data": {
         "agentId": "openclaw",
         "goal": "Test the landing page created by the developer and ensure it works correctly before delivery.\n\nTasks:\n- review the generated HTML, CSS, and JavaScript\n- check that the page renders correctly in a browser\n- verify responsiveness on different screen sizes\n- detect broken UI elements, layout issues, or missing assets\n- identify invalid code or obvious bugs\n- if errors or issues are found, fix them directly in the project\n- apply reasonable improvements if they clearly increase stability or usability",
-        "customName": "QA Engineer - KOLYA 🧪"
+        "customName": "QA Engineer - DAN 🧪"
       },
       "width": 320,
       "height": 446,
       "selected": false,
-      "positionAbsolute": {
-        "x": 604.1339892168676,
-        "y": 41.00223224898062
-      },
       "dragging": false
     },
     {
@@ -54,26 +51,22 @@
       "data": {
         "agentId": "openclaw",
         "goal": "Deploy the generated project and run the server in the background so it is accessible locally.\n\nTasks:\n- review the project to determine how the server should be started\n- install dependencies if required\n- start the application server\n- run the server in a background process so the workflow can continue\n- ensure the server started successfully\n- detect the port used by the server\n- verify that the server responds locally\n\nExpected Result:\n- the server is running in the background\n- the local URL is available also when you finish\n\nReport in chat:\nServer is running at http://localhost:<PORT>",
-        "customName": "DevOps Engineer - PETYA  🖥️"
+        "customName": "DevOps Engineer - PAUL  🖥️",
+        "settings": {
+          "persistBackgroundProcesses": true
+        }
       },
       "width": 320,
       "height": 494,
       "selected": false,
-      "positionAbsolute": {
-        "x": 1076.0444479880591,
-        "y": -8.589746524264143
-      },
       "dragging": false
     }
   ],
   "edges": [
     {
-      "source": "node-af169ebd-f3bb-4dcd-aa00-2d70cca96cd9",
-      "sourceHandle": null,
-      "target": "node-21fc2132-73e1-4685-848a-807981f7fe5e",
-      "targetHandle": null,
       "id": "edge-d0176756-9a3f-4827-ae0d-b34c3340e204",
-      "animated": false,
+      "source": "node-af169ebd-f3bb-4dcd-aa00-2d70cca96cd9",
+      "target": "node-21fc2132-73e1-4685-848a-807981f7fe5e",
       "markerEnd": {
         "type": "arrowclosed",
         "width": 20,
@@ -86,12 +79,9 @@
       }
     },
     {
-      "source": "node-21fc2132-73e1-4685-848a-807981f7fe5e",
-      "sourceHandle": null,
-      "target": "node-ea7b3a39-36df-4d2a-bd9c-0625981602f0",
-      "targetHandle": null,
       "id": "edge-fd180847-7128-48d8-aece-00b20dafd685",
-      "animated": false,
+      "source": "node-21fc2132-73e1-4685-848a-807981f7fe5e",
+      "target": "node-ea7b3a39-36df-4d2a-bd9c-0625981602f0",
       "markerEnd": {
         "type": "arrowclosed",
         "width": 20,
@@ -104,5 +94,5 @@
       }
     }
   ],
-  "updatedAt": "2026-03-10T12:09:47.032Z"
+  "updatedAt": "2026-03-12T11:15:52.571Z"
 }
