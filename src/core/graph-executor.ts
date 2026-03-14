@@ -175,6 +175,36 @@ export class GraphExecutor {
           } | self-heal attempts: ${maxAttempts}`,
         );
 
+        if (node.agentId === "trigger") {
+          statusByNode.set(nodeId, "success");
+          this.db.updateStepRunStatus(stepRunId, "success", 0, null);
+          this.eventBus.emit({
+            runId,
+            type: "step_status",
+            at: new Date().toISOString(),
+            payload: {
+              nodeId,
+              stepRunId,
+              status: "success",
+            },
+          });
+          this.writeNodeMessage(
+            runId,
+            nodeId,
+            "system",
+            "run",
+            "Trigger node is control-only. Direct run execution was skipped and downstream steps were unblocked.",
+          );
+
+          for (const next of outgoing.get(nodeId) ?? []) {
+            incomingCount.set(next, (incomingCount.get(next) ?? 0) - 1);
+            if (incomingCount.get(next) === 0) {
+              ready.push(next);
+            }
+          }
+          return;
+        }
+
         const plugin = this.pluginRegistry.get(node.agentId);
         if (!plugin) {
           const error = `Agent ${node.agentId} is not registered`;

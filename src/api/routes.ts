@@ -10,6 +10,7 @@ import type { ProviderService } from "../providers/provider-service";
 import type { EventBus } from "../core/event-bus";
 import type { ToolchainService } from "../core/toolchain-service";
 import type { SettingsService } from "../core/settings-service";
+import type { TriggerService } from "../core/trigger-service";
 import type { PipelineGraph } from "../types";
 
 interface RoutesDeps {
@@ -23,6 +24,7 @@ interface RoutesDeps {
   settingsService: SettingsService;
   eventBus: EventBus;
   toolchainService: ToolchainService;
+  triggerService: TriggerService;
 }
 
 const pipelineSchema = z.object({
@@ -71,6 +73,24 @@ const chatMessageSchema = z.object({
 const chatReplySchema = z.object({
   content: z.string().min(1),
   rerunMode: z.enum(["node", "pipeline"]).optional(),
+});
+
+const triggerGenerationSchema = z.object({
+  nodeId: z.string().min(1),
+  goal: z.string().min(1),
+  workspacePath: z.string().min(1),
+  settings: z.record(z.string(), z.unknown()).optional(),
+  messages: z.array(
+    z.object({
+      role: z.enum(["user", "assistant"]),
+      content: z.string().min(1),
+    }),
+  ).optional(),
+});
+
+const triggerLifecycleSchema = z.object({
+  pipelineId: z.string().min(1),
+  nodeId: z.string().min(1),
 });
 
 const providerConnectSchema = z.object({
@@ -320,6 +340,70 @@ export async function registerRoutes(app: FastifyInstance<any, any, any, any>, d
       userMessage: result.userMessage,
       message: result.agentMessage,
     };
+  });
+
+  app.post("/triggers/generate", async (request, reply) => {
+    const parsed = triggerGenerationSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: parsed.error.flatten() });
+    }
+
+    try {
+      return await deps.triggerService.generateTrigger(parsed.data);
+    } catch (error) {
+      return reply.code(400).send({ error: error instanceof Error ? error.message : "Failed to generate trigger" });
+    }
+  });
+
+  app.get("/triggers/:pipelineId/:nodeId/status", async (request) => {
+    const { pipelineId, nodeId } = request.params as { pipelineId: string; nodeId: string };
+    return deps.triggerService.getTriggerStatus({ pipelineId, nodeId });
+  });
+
+  app.post("/triggers/activate", async (request, reply) => {
+    const parsed = triggerLifecycleSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: parsed.error.flatten() });
+    }
+
+    try {
+      return await deps.triggerService.activateTrigger(parsed.data);
+    } catch (error) {
+      return reply.code(400).send({ error: error instanceof Error ? error.message : "Failed to activate trigger" });
+    }
+  });
+
+  app.post("/triggers/pause", async (request, reply) => {
+    const parsed = triggerLifecycleSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: parsed.error.flatten() });
+    }
+
+    try {
+      return await deps.triggerService.pauseTrigger(parsed.data);
+    } catch (error) {
+      return reply.code(400).send({ error: error instanceof Error ? error.message : "Failed to pause trigger" });
+    }
+  });
+
+  app.route({
+    method: ["GET", "POST"],
+    url: "/trigger-hooks/:token",
+    handler: async (request, reply) => {
+      const token = (request.params as { token: string }).token;
+      const result = await deps.triggerService.handleWebhookFire({
+        token,
+        method: request.method,
+        headers: request.headers as Record<string, string | string[] | undefined>,
+        body: request.body,
+      });
+
+      if (!result.ok) {
+        return reply.code(404).send(result);
+      }
+
+      return result;
+    },
   });
 
   app.get("/artifacts/:artifactId/download", async (request, reply) => {

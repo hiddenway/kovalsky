@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 type Props = {
   pipelineName: string;
   isRunning: boolean;
+  runDisabledReason?: string | null;
   backHref: string;
   onNameChange: (value: string) => void;
   onRun: () => void;
@@ -19,6 +20,7 @@ type Props = {
 export function TopBar({
   pipelineName,
   isRunning,
+  runDisabledReason,
   backHref,
   onNameChange,
   onRun,
@@ -56,8 +58,8 @@ export function TopBar({
         placeholder="Workflow Name"
       />
 
-      <Button type="button" onClick={onRun} disabled={isRunning}>
-        {isRunning ? "Running..." : "Run"}
+      <Button type="button" onClick={onRun} disabled={isRunning || Boolean(runDisabledReason)} title={runDisabledReason ?? undefined}>
+        {isRunning ? "Running..." : runDisabledReason ? "Trigger-Controlled" : "Run"}
       </Button>
       <Button type="button" variant="secondary" onClick={onSave}>
         Save

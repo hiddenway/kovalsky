@@ -57,7 +57,7 @@ function resolveToolByAgent(agentId: string): KnownTool | null {
   if (agentId === "codex" || agentId === "codex-cli") {
     return "codex";
   }
-  if (agentId === "openclaw") {
+  if (agentId === "openclaw" || agentId === "trigger") {
     return "openclaw";
   }
   return null;

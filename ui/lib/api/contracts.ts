@@ -115,6 +115,55 @@ export type GatewaySettingsPatch = {
   };
 };
 
+export type TriggerChatMessage = {
+  role: "user" | "assistant";
+  content: string;
+};
+
+export type TriggerGeneratedConfig =
+  | {
+      type: "webhook";
+      token: string;
+      secret: string;
+      method: "GET" | "POST";
+      coolDownSeconds: number;
+    }
+  | {
+      type: "script_poll";
+      intervalSeconds: number;
+      timeoutSeconds: number;
+      coolDownSeconds: number;
+      scriptFileName: string;
+      scriptContent: string;
+      scriptPath?: string;
+    };
+
+export type TriggerGenerationResponse =
+  | {
+      status: "needs_input";
+      questions: string[];
+      raw: string;
+    }
+  | {
+      status: "ready";
+      summary: string;
+      config: TriggerGeneratedConfig;
+      scriptPath?: string;
+      webhookPath?: string;
+      raw: string;
+    };
+
+export type TriggerStatusResponse = {
+  status: "draft" | "paused" | "active";
+  summary?: string;
+  webhookPath?: string | null;
+  scriptPath?: string | null;
+  lastCheckAt?: string | null;
+  lastFireAt?: string | null;
+  lastRunId?: string | null;
+  lastError?: string | null;
+};
+
 export interface KovalskyApiClient {
   getAgents(): Promise<AgentDefinition[]>;
   getWorkflowTemplates(): Promise<{ templates: Pipeline[] }>;
@@ -220,4 +269,14 @@ export interface KovalskyApiClient {
   getCodexAuthStatus(): Promise<CodexAuthStatus>;
   getSettings(): Promise<GatewaySettings>;
   updateSettings(input: GatewaySettingsPatch): Promise<GatewaySettings>;
+  generateTrigger(input: {
+    nodeId: string;
+    goal: string;
+    workspacePath: string;
+    settings?: Record<string, unknown>;
+    messages?: TriggerChatMessage[];
+  }): Promise<TriggerGenerationResponse>;
+  getTriggerStatus(pipelineId: string, nodeId: string): Promise<TriggerStatusResponse>;
+  activateTrigger(input: { pipelineId: string; nodeId: string }): Promise<TriggerStatusResponse>;
+  pauseTrigger(input: { pipelineId: string; nodeId: string }): Promise<TriggerStatusResponse>;
 }

@@ -184,6 +184,10 @@ export class RunService {
     return { runId: run.id };
   }
 
+  async buildAutomationEnv(openaiCredentialId?: string): Promise<NodeJS.ProcessEnv> {
+    return this.buildAgentEnv(openaiCredentialId);
+  }
+
   private resolveWorkspacePath(rawPath: string): string | null {
     const input = rawPath.trim();
     if (!input) {

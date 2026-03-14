@@ -22,6 +22,10 @@ export function buildAuthPreHandler(pairingToken: string) {
       return;
     }
 
+    if (request.url.startsWith("/trigger-hooks/")) {
+      return;
+    }
+
     if (request.url.startsWith("/stream")) {
       const parsed = new URL(request.url, "http://localhost");
       const queryToken = parsed.searchParams.get("token");

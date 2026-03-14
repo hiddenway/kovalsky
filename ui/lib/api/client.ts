@@ -459,6 +459,73 @@ class RestKovalskyApiClient implements KovalskyApiClient {
 
     return (await response.json()) as Awaited<ReturnType<KovalskyApiClient["updateSettings"]>>;
   }
+
+  async generateTrigger(input: {
+    nodeId: string;
+    goal: string;
+    workspacePath: string;
+    settings?: Record<string, unknown>;
+    messages?: Array<{ role: "user" | "assistant"; content: string }>;
+  }) {
+    const response = await this.fetchWithFallback("/triggers/generate", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(input),
+    });
+
+    if (!response.ok) {
+      await this.throwHttpError(response, "Failed to generate trigger");
+    }
+
+    return (await response.json()) as Awaited<ReturnType<KovalskyApiClient["generateTrigger"]>>;
+  }
+
+  async getTriggerStatus(pipelineId: string, nodeId: string) {
+    const response = await this.fetchWithFallback(`/triggers/${pipelineId}/${nodeId}/status`, {
+      method: "GET",
+      cache: "no-store",
+    });
+
+    if (!response.ok) {
+      await this.throwHttpError(response, "Failed to load trigger status");
+    }
+
+    return (await response.json()) as Awaited<ReturnType<KovalskyApiClient["getTriggerStatus"]>>;
+  }
+
+  async activateTrigger(input: { pipelineId: string; nodeId: string }) {
+    const response = await this.fetchWithFallback("/triggers/activate", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(input),
+    });
+
+    if (!response.ok) {
+      await this.throwHttpError(response, "Failed to activate trigger");
+    }
+
+    return (await response.json()) as Awaited<ReturnType<KovalskyApiClient["activateTrigger"]>>;
+  }
+
+  async pauseTrigger(input: { pipelineId: string; nodeId: string }) {
+    const response = await this.fetchWithFallback("/triggers/pause", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(input),
+    });
+
+    if (!response.ok) {
+      await this.throwHttpError(response, "Failed to pause trigger");
+    }
+
+    return (await response.json()) as Awaited<ReturnType<KovalskyApiClient["pauseTrigger"]>>;
+  }
 }
 
 let sharedClient: KovalskyApiClient | null = null;

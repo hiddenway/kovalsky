@@ -2,7 +2,7 @@
 
 import { memo } from "react";
 import { Handle } from "reactflow";
-import { getAgentById } from "@/lib/agents";
+import { getAgentById, isTriggerAgent } from "@/lib/agents";
 import type { PipelineNodeData } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -70,22 +70,24 @@ function AgentNode({ data, selected = false }: AgentNodeProps): React.JSX.Elemen
         ) : null}
       </div>
 
-      <button
-        type="button"
-        className={cn(
-          "mt-2 w-full rounded-md border px-3 py-2 text-sm font-semibold transition",
-          "border-cyan-400/80 bg-cyan-500/15 text-cyan-100 shadow-[0_0_0_1px_rgba(34,211,238,0.25)]",
-          "hover:bg-cyan-500/25 hover:text-cyan-50",
-          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/80 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-900",
-        )}
-        onClick={(event) => {
-          event.preventDefault();
-          event.stopPropagation();
-          data.onOpenHandoff?.();
-        }}
-      >
-        Go to chat with Agent
-      </button>
+      {!isTriggerAgent(data.agentId) ? (
+        <button
+          type="button"
+          className={cn(
+            "mt-2 w-full rounded-md border px-3 py-2 text-sm font-semibold transition",
+            "border-cyan-400/80 bg-cyan-500/15 text-cyan-100 shadow-[0_0_0_1px_rgba(34,211,238,0.25)]",
+            "hover:bg-cyan-500/25 hover:text-cyan-50",
+            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/80 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-900",
+          )}
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            data.onOpenHandoff?.();
+          }}
+        >
+          Go to chat with Agent
+        </button>
+      ) : null}
 
       <div className="mt-2 rounded border border-zinc-800 bg-zinc-950/80 p-2 text-xs text-zinc-300">
         <p className="whitespace-pre-wrap break-words">{data.goal || "Goal is empty"}</p>

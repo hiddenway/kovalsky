@@ -172,6 +172,10 @@ export class DatabaseService {
     return (this.db.prepare("SELECT * FROM pipelines WHERE id = ?").get(id) as PipelineRecord | undefined) ?? null;
   }
 
+  listPipelines(): PipelineRecord[] {
+    return this.db.prepare("SELECT * FROM pipelines ORDER BY updated_at DESC, id ASC").all() as PipelineRecord[];
+  }
+
   updatePipeline(id: string, name: string, graphJson: string): PipelineRecord | null {
     const existing = this.getPipeline(id);
     if (!existing) {

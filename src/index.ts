@@ -17,6 +17,7 @@ import { PipelineService } from "./core/pipeline-service";
 import { ProviderService } from "./providers/provider-service";
 import { RunService } from "./core/run-service";
 import { SettingsService } from "./core/settings-service";
+import { TriggerService } from "./core/trigger-service";
 import { registerRoutes } from "./api/routes";
 import { ensureDir } from "./utils/fs";
 
@@ -79,6 +80,8 @@ async function main(): Promise<void> {
   const providerService = new ProviderService(db, config.appDataDir);
   const settingsService = new SettingsService(config.appDataDir);
   const runService = new RunService(db, graphExecutor, agentHost, providerService, settingsService, artifactStore, eventBus, logger);
+  const triggerService = new TriggerService(db, runService, agentHost, processManager, config.appDataDir, logger);
+  await triggerService.bootstrapActiveTriggers();
 
   if (!config.disableAuth) {
     app.addHook("preHandler", buildAuthPreHandler(pairingToken));
@@ -97,6 +100,7 @@ async function main(): Promise<void> {
     settingsService,
     eventBus,
     toolchainService,
+    triggerService,
   });
 
   app.addHook("onClose", async () => {

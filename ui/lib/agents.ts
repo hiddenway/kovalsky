@@ -15,6 +15,13 @@ export const AGENT_DEFINITIONS: AgentDefinition[] = [
     icon: "🦞",
     outputs: ["TestReport", "Url", "Screenshot"],
   },
+  {
+    id: "trigger",
+    title: "Trigger",
+    description: "Generates and manages an event trigger that launches the workflow automatically.",
+    icon: "🪝",
+    outputs: ["TriggerConfig", "TriggerScript", "WorkflowStart"],
+  },
 ];
 
 export type AgentSettingField = {
@@ -220,12 +227,53 @@ const AGENT_SETTING_FIELDS: Record<string, AgentSettingField[]> = {
       description: "Per-node report prompt template used for post-step and chat follow-up.",
     },
   ],
+  trigger: [
+    {
+      key: "command",
+      label: "Command",
+      type: "text",
+      defaultValue: "openclaw",
+      placeholder: "openclaw",
+      description: "Executable used for Trigger generation via OpenClaw.",
+    },
+    {
+      key: "agentId",
+      label: "OpenClaw Agent ID",
+      type: "text",
+      defaultValue: "main",
+      placeholder: "main",
+      description: "Optional OpenClaw agent profile used to generate the trigger.",
+    },
+    {
+      key: "model",
+      label: "Model",
+      type: "text",
+      defaultValue: "",
+      placeholder: "openai-codex/gpt-5.2-codex",
+      options: OPENCLAW_MODEL_SUGGESTIONS,
+      description: "Optional model override used when generating the trigger config/script.",
+    },
+    {
+      key: "thinking",
+      label: "Thinking",
+      type: "select",
+      defaultValue: "minimal",
+      options: [
+        { label: "Off", value: "off" },
+        { label: "Minimal", value: "minimal" },
+        { label: "Low", value: "low" },
+        { label: "Medium", value: "medium" },
+        { label: "High", value: "high" },
+      ],
+    },
+  ],
 };
 
 const AGENT_ALIASES: Record<string, string> = {
   codex: "codex-cli",
   "codex-cli": "codex-cli",
   openclaw: "openclaw",
+  trigger: "trigger",
 };
 
 export function normalizeAgentId(agentId: string): string {
@@ -235,6 +283,10 @@ export function normalizeAgentId(agentId: string): string {
 export function getAgentById(agentId: string): AgentDefinition | undefined {
   const normalizedId = normalizeAgentId(agentId);
   return AGENT_DEFINITIONS.find((agent) => agent.id === normalizedId);
+}
+
+export function isTriggerAgent(agentId: string): boolean {
+  return normalizeAgentId(agentId) === "trigger";
 }
 
 export function getSupportedAgents(agents: AgentDefinition[]): AgentDefinition[] {

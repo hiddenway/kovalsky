@@ -1,12 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { getAgentById, getAgentSettingFields, type AgentSettingField } from "@/lib/agents";
+import type { TriggerGenerationResponse, TriggerStatusResponse } from "@/lib/api/contracts";
+import { getAgentById, getAgentSettingFields, isTriggerAgent, type AgentSettingField } from "@/lib/agents";
 import { getApiClient } from "@/lib/api/client";
 import type { PipelineNodeData, ReactFlowEdge, ReactFlowNode } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 
 type Props = {
+  pipelineId: string;
   selectedNode: ReactFlowNode<PipelineNodeData> | null;
   selectedEdge: ReactFlowEdge | null;
   pipeline: {
@@ -28,6 +30,7 @@ type Props = {
   onDeleteSelectedEdge?: () => void;
   onBeforeSendChat?: () => Promise<void>;
   onSavePipeline: () => void;
+  onSyncPipeline?: () => Promise<void>;
   onExternalRunStarted?: (runId: string) => void;
   onMetadataChange: (payload: {
     name?: string;
@@ -44,6 +47,34 @@ type ChatMessage = {
   role: "assistant" | "user";
   content: string;
 };
+
+type TriggerChatMessage = {
+  role: "assistant" | "user";
+  content: string;
+};
+
+type TriggerState = {
+  lifecycleStatus?: "draft" | "paused" | "active";
+  summary?: string;
+  generated?: Record<string, unknown>;
+  workspacePath?: string;
+  scriptPath?: string;
+  webhookPath?: string;
+  raw?: string;
+  chat?: TriggerChatMessage[];
+  lastCheckAt?: string | null;
+  lastFireAt?: string | null;
+  lastRunId?: string | null;
+  lastError?: string | null;
+};
+
+function isObjectRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function readTriggerState(settings: Record<string, unknown>): TriggerState {
+  return isObjectRecord(settings.trigger) ? settings.trigger as TriggerState : {};
+}
 
 function sanitizeAssistantChatContent(raw: string): string {
   const lines = raw
@@ -170,6 +201,7 @@ function areChatMessagesEqual(left: ChatMessage[], right: ChatMessage[]): boolea
 }
 
 export function InspectorPanel({
+  pipelineId,
   selectedNode,
   selectedEdge,
   pipeline,
@@ -184,6 +216,7 @@ export function InspectorPanel({
   onDeleteSelectedEdge,
   onBeforeSendChat,
   onSavePipeline,
+  onSyncPipeline,
   onExternalRunStarted,
   onMetadataChange,
 }: Props): React.JSX.Element {
@@ -191,6 +224,9 @@ export function InspectorPanel({
   const [chatInput, setChatInput] = useState("");
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [isThinking, setIsThinking] = useState(false);
+  const [triggerInput, setTriggerInput] = useState("");
+  const [isTriggerBusy, setIsTriggerBusy] = useState(false);
+  const [triggerRuntimeStatus, setTriggerRuntimeStatus] = useState<TriggerStatusResponse | null>(null);
   const chatBottomRef = useRef<HTMLDivElement | null>(null);
   const chatInitializedForNodeRef = useRef<string | null>(null);
   const externalRunSeenRef = useRef<Set<string>>(new Set());
@@ -306,6 +342,32 @@ export function InspectorPanel({
       window.clearInterval(timer);
     };
   }, [activeRunId, selectedNodeId, showHandoff, selectedNode, announceExternalRun]);
+
+  useEffect(() => {
+    if (!selectedNode || !isTriggerAgent(selectedNode.data.agentId)) {
+      setTriggerRuntimeStatus(null);
+      setTriggerInput("");
+      return;
+    }
+
+    let disposed = false;
+    const api = getApiClient();
+    void api.getTriggerStatus(pipelineId, selectedNode.id)
+      .then((status) => {
+        if (!disposed) {
+          setTriggerRuntimeStatus(status);
+        }
+      })
+      .catch(() => {
+        if (!disposed) {
+          setTriggerRuntimeStatus(null);
+        }
+      });
+
+    return () => {
+      disposed = true;
+    };
+  }, [pipelineId, selectedNode]);
 
   if (selectedNode) {
     const definition = getAgentById(selectedNode.data.agentId);
@@ -516,6 +578,72 @@ export function InspectorPanel({
       });
     };
 
+    const triggerState = readTriggerState(settings);
+    const triggerChat = Array.isArray(triggerState.chat) ? triggerState.chat : [];
+    const effectiveTriggerStatus = triggerRuntimeStatus?.status ?? triggerState.lifecycleStatus ?? "draft";
+
+    const updateTriggerState = (nextTriggerState: TriggerState): Record<string, unknown> => {
+      const nextSettings = {
+        ...settings,
+        trigger: nextTriggerState,
+      };
+      onSettingsChange(nextSettings);
+      return nextSettings;
+    };
+
+    const applyTriggerRuntimeStatus = (
+      currentTriggerState: TriggerState,
+      status: TriggerStatusResponse,
+    ): TriggerState => ({
+      ...currentTriggerState,
+      lifecycleStatus: status.status,
+      webhookPath: status.webhookPath ?? currentTriggerState.webhookPath,
+      scriptPath: status.scriptPath ?? currentTriggerState.scriptPath,
+      lastCheckAt: status.lastCheckAt ?? currentTriggerState.lastCheckAt,
+      lastFireAt: status.lastFireAt ?? currentTriggerState.lastFireAt,
+      lastRunId: status.lastRunId ?? currentTriggerState.lastRunId,
+      lastError: status.lastError ?? currentTriggerState.lastError,
+      summary: status.summary ?? currentTriggerState.summary,
+      workspacePath: currentTriggerState.workspacePath ?? pipeline.workspacePath,
+    });
+
+    const appendTriggerAssistantMessages = (
+      currentTriggerState: TriggerState,
+      response: TriggerGenerationResponse,
+      nextChat: TriggerChatMessage[],
+    ): TriggerState => {
+      if (response.status === "needs_input") {
+        return {
+          ...currentTriggerState,
+          lifecycleStatus: "draft",
+          chat: [
+            ...nextChat,
+            ...response.questions.map((question) => ({ role: "assistant" as const, content: question })),
+          ],
+          raw: response.raw,
+          workspacePath: pipeline.workspacePath,
+        };
+      }
+
+      const lines = [
+        response.summary,
+        response.webhookPath ? `Webhook path: ${response.webhookPath}` : "",
+        response.scriptPath ? `Script path: ${response.scriptPath}` : "",
+      ].filter(Boolean);
+
+      return {
+        ...currentTriggerState,
+        lifecycleStatus: "paused",
+        summary: response.summary,
+        generated: response.config as Record<string, unknown>,
+        webhookPath: response.webhookPath,
+        scriptPath: response.scriptPath,
+        raw: response.raw,
+        workspacePath: pipeline.workspacePath,
+        chat: [...nextChat, { role: "assistant", content: lines.join("\n") }],
+      };
+    };
+
     return (
       <aside className="h-full overflow-y-auto border-l border-zinc-800 bg-zinc-950/70 p-3">
         <h2 className="text-sm font-semibold text-zinc-100">Node Inspector</h2>
@@ -539,22 +667,24 @@ export function InspectorPanel({
             />
           </div>
 
-          <div>
-            <p className="mb-1 text-xs text-zinc-400">Agent Uses Chat Context</p>
-            <select
-              value={chatContextMode}
-              onChange={(event) =>
-                onSettingsChange({
-                  ...settings,
-                  chatContextMode: event.target.value,
-                })}
-              className="w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-sm text-zinc-100 outline-none ring-cyan-400/40 focus:ring"
-            >
-              <option value="off">Off</option>
-              <option value="light">Light</option>
-              <option value="strict">Strict</option>
-            </select>
-          </div>
+          {!isTriggerAgent(selectedNode.data.agentId) ? (
+            <div>
+              <p className="mb-1 text-xs text-zinc-400">Agent Uses Chat Context</p>
+              <select
+                value={chatContextMode}
+                onChange={(event) =>
+                  onSettingsChange({
+                    ...settings,
+                    chatContextMode: event.target.value,
+                  })}
+                className="w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-sm text-zinc-100 outline-none ring-cyan-400/40 focus:ring"
+              >
+                <option value="off">Off</option>
+                <option value="light">Light</option>
+                <option value="strict">Strict</option>
+              </select>
+            </div>
+          ) : null}
 
           <div>
             <p className="mb-1 text-xs text-zinc-400">Goal</p>
@@ -562,9 +692,181 @@ export function InspectorPanel({
               value={selectedNode.data.goal}
               onChange={(event) => onGoalChange(event.target.value)}
               className="min-h-28 w-full resize-y rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 outline-none ring-cyan-400/40 focus:ring"
-              placeholder="Describe what this agent must do"
+              placeholder={isTriggerAgent(selectedNode.data.agentId) ? "Describe the event that should launch this workflow" : "Describe what this agent must do"}
             />
           </div>
+
+          {isTriggerAgent(selectedNode.data.agentId) ? (
+            <div className="space-y-3 rounded-md border border-zinc-800 bg-zinc-900/70 p-3">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs text-zinc-400">Trigger Status</p>
+                  <p className="text-sm font-medium capitalize text-zinc-100">{effectiveTriggerStatus}</p>
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    onClick={() => {
+                      const trimmedInput = triggerInput.trim();
+                      const nextChat = trimmedInput
+                        ? [...triggerChat, { role: "user" as const, content: trimmedInput }]
+                        : triggerChat;
+                      const currentTriggerState = {
+                        ...triggerState,
+                        chat: nextChat,
+                        workspacePath: pipeline.workspacePath,
+                      } satisfies TriggerState;
+                      updateTriggerState(currentTriggerState);
+                      setTriggerInput("");
+                      setIsTriggerBusy(true);
+
+                      void (async () => {
+                        try {
+                          const api = getApiClient();
+                          const response = await api.generateTrigger({
+                            nodeId: selectedNode.id,
+                            goal: selectedNode.data.goal,
+                            workspacePath: pipeline.workspacePath,
+                            settings,
+                            messages: nextChat,
+                          });
+                          const nextState = appendTriggerAssistantMessages(currentTriggerState, response, nextChat);
+                          updateTriggerState(nextState);
+                          setTriggerRuntimeStatus((current) => current ? { ...current, status: nextState.lifecycleStatus ?? "draft" } : null);
+                        } catch (error) {
+                          const message = error instanceof Error ? error.message : "Failed to generate trigger.";
+                          updateTriggerState({
+                            ...currentTriggerState,
+                            chat: [...nextChat, { role: "assistant", content: message }],
+                            lastError: message,
+                          });
+                        } finally {
+                          setIsTriggerBusy(false);
+                        }
+                      })();
+                    }}
+                    disabled={isTriggerBusy || !pipeline.workspacePath.trim() || !selectedNode.data.goal.trim()}
+                  >
+                    {isTriggerBusy ? "Generating..." : "Generate Trigger"}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    disabled={isTriggerBusy || !triggerState.generated || effectiveTriggerStatus === "active"}
+                    onClick={() => {
+                      const currentTriggerState = updateTriggerState({
+                        ...triggerState,
+                        workspacePath: pipeline.workspacePath,
+                      });
+                      setIsTriggerBusy(true);
+                      void (async () => {
+                        try {
+                          await onSyncPipeline?.();
+                          const api = getApiClient();
+                          const status = await api.activateTrigger({ pipelineId, nodeId: selectedNode.id });
+                          setTriggerRuntimeStatus(status);
+                          updateTriggerState(applyTriggerRuntimeStatus(readTriggerState(currentTriggerState), status));
+                        } catch (error) {
+                          const message = error instanceof Error ? error.message : "Failed to activate trigger.";
+                          updateTriggerState({
+                            ...readTriggerState(currentTriggerState),
+                            lastError: message,
+                          });
+                        } finally {
+                          setIsTriggerBusy(false);
+                        }
+                      })();
+                    }}
+                  >
+                    Activate
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    disabled={isTriggerBusy || effectiveTriggerStatus !== "active"}
+                    onClick={() => {
+                      setIsTriggerBusy(true);
+                      void (async () => {
+                        try {
+                          await onSyncPipeline?.();
+                          const api = getApiClient();
+                          const status = await api.pauseTrigger({ pipelineId, nodeId: selectedNode.id });
+                          setTriggerRuntimeStatus(status);
+                          updateTriggerState(applyTriggerRuntimeStatus(triggerState, status));
+                        } catch (error) {
+                          const message = error instanceof Error ? error.message : "Failed to pause trigger.";
+                          updateTriggerState({
+                            ...triggerState,
+                            lastError: message,
+                          });
+                        } finally {
+                          setIsTriggerBusy(false);
+                        }
+                      })();
+                    }}
+                  >
+                    Pause
+                  </Button>
+                </div>
+              </div>
+
+              <p className="text-[11px] text-zinc-500">
+                Trigger nodes do not react to manual workflow Run. Generate the trigger first, then activate it so it starts the workflow itself.
+              </p>
+
+              {triggerState.summary ? (
+                <div className="rounded-md border border-zinc-800 bg-zinc-950/70 p-2 text-xs text-zinc-300">
+                  <p>{triggerState.summary}</p>
+                  {triggerState.webhookPath ? <p className="mt-2 break-all text-zinc-400">Webhook: {triggerState.webhookPath}</p> : null}
+                  {triggerState.scriptPath ? <p className="mt-1 break-all text-zinc-400">Script: {triggerState.scriptPath}</p> : null}
+                </div>
+              ) : null}
+
+              {triggerRuntimeStatus?.lastRunId ? (
+                <div className="rounded-md border border-zinc-800 bg-zinc-950/70 p-2 text-xs text-zinc-300">
+                  <p>Last run: {triggerRuntimeStatus.lastRunId}</p>
+                  {triggerRuntimeStatus.lastCheckAt ? <p className="mt-1 text-zinc-400">Last check: {triggerRuntimeStatus.lastCheckAt}</p> : null}
+                  {triggerRuntimeStatus.lastFireAt ? <p className="mt-1 text-zinc-400">Last fire: {triggerRuntimeStatus.lastFireAt}</p> : null}
+                  {triggerRuntimeStatus.lastError ? <p className="mt-1 text-rose-300">Last error: {triggerRuntimeStatus.lastError}</p> : null}
+                </div>
+              ) : triggerRuntimeStatus?.lastError ? (
+                <div className="rounded-md border border-rose-900/70 bg-rose-950/40 p-2 text-xs text-rose-200">
+                  {triggerRuntimeStatus.lastError}
+                </div>
+              ) : null}
+
+              <div className="space-y-2">
+                <p className="text-xs text-zinc-400">Trigger Chat</p>
+                <div className="max-h-64 space-y-2 overflow-y-auto rounded-md border border-zinc-800 bg-zinc-950/70 p-2">
+                  {triggerChat.length > 0 ? triggerChat.map((message, index) => (
+                    <div
+                      key={`${message.role}-${index}`}
+                      className={
+                        message.role === "assistant"
+                          ? "rounded-md border border-cyan-500/30 bg-cyan-500/10 p-2 text-xs text-cyan-50"
+                          : "rounded-md border border-zinc-700 bg-zinc-900 p-2 text-xs text-zinc-100"
+                      }
+                    >
+                      <p className="mb-1 text-[10px] uppercase tracking-wide text-zinc-400">
+                        {message.role === "assistant" ? "Trigger" : "You"}
+                      </p>
+                      <p className="whitespace-pre-wrap break-words">{message.content}</p>
+                    </div>
+                  )) : (
+                    <p className="text-xs text-zinc-500">Generation questions and answers will appear here.</p>
+                  )}
+                </div>
+                <div className="flex gap-2">
+                  <input
+                    value={triggerInput}
+                    onChange={(event) => setTriggerInput(event.target.value)}
+                    className="w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 outline-none ring-cyan-400/40 focus:ring"
+                    placeholder="Add clarification or answer a trigger question..."
+                  />
+                </div>
+              </div>
+            </div>
+          ) : null}
 
           <div>
             <p className="mb-1 text-xs text-zinc-400">Settings</p>

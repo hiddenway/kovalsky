@@ -17,7 +17,7 @@ import { InspectorPanel } from "@/components/builder/inspector-panel";
 import { RunConsole } from "@/components/builder/run-console";
 import { TopBar } from "@/components/builder/top-bar";
 import { getApiClient } from "@/lib/api/client";
-import { AGENT_DEFINITIONS } from "@/lib/agents";
+import { AGENT_DEFINITIONS, isTriggerAgent } from "@/lib/agents";
 import { isUserCanceledFileDialog, savePipelineToFile } from "@/lib/pipeline-file-save";
 import type { AgentDefinition } from "@/lib/types";
 import { usePipelineStore } from "@/stores/pipeline-store";
@@ -402,6 +402,13 @@ function CanvasBuilderInner(): React.JSX.Element {
   }, [selectedEdge, latestRun]);
 
   const isRunning = latestRun?.run.status === "running";
+  const hasTriggerNode = useMemo(
+    () => nodes.some((node) => isTriggerAgent(node.data.agentId)),
+    [nodes],
+  );
+  const runDisabledReason = hasTriggerNode
+    ? "This workflow contains a Trigger node. Start it via Generate Trigger -> Activate instead of manual Run."
+    : null;
 
   useEffect(() => {
     if (!dragState) {
@@ -472,6 +479,15 @@ function CanvasBuilderInner(): React.JSX.Element {
         title: "Nothing to run",
         description: "Add at least one agent node before running.",
         tone: "error",
+      });
+      return;
+    }
+
+    if (snapshot.nodes.some((node) => isTriggerAgent(node.data.agentId))) {
+      pushToast({
+        title: "Manual run disabled",
+        description: "Trigger workflows start themselves after the trigger is generated and activated.",
+        tone: "info",
       });
       return;
     }
@@ -659,6 +675,7 @@ function CanvasBuilderInner(): React.JSX.Element {
       <TopBar
         pipelineName={name}
         isRunning={Boolean(isRunning)}
+        runDisabledReason={runDisabledReason}
         backHref="/pipelines"
         onNameChange={(value) => updateMetadata({ name: value })}
         onRun={() => void runPipeline()}
@@ -765,6 +782,7 @@ function CanvasBuilderInner(): React.JSX.Element {
           />
 
           <InspectorPanel
+            pipelineId={activePipelineId}
             selectedNode={selectedNode}
             selectedEdge={selectedEdge}
             pipeline={{ name, description, tags, workspacePath, chatRerunMode, clearNodeChatContextOnRun }}
@@ -792,6 +810,15 @@ function CanvasBuilderInner(): React.JSX.Element {
               }
             }}
             onSavePipeline={handleInspectorSave}
+            onSyncPipeline={async () => {
+              saveActivePipeline();
+              const snapshot = getActivePipelineSnapshot();
+              try {
+                await getApiClient().updatePipeline(snapshot);
+              } catch {
+                await getApiClient().createPipeline(snapshot);
+              }
+            }}
             onExternalRunStarted={(runId) => {
               attachExternalRun(runId, getActivePipelineSnapshot());
             }}
