@@ -361,6 +361,9 @@ export function InspectorPanel({
         if (!disposed) {
           setTriggerRuntimeStatus(status);
         }
+        if (status.lastRunId?.trim()) {
+          announceExternalRun(status.lastRunId.trim(), `trigger-run:${pipelineId}:${selectedNode.id}:${status.lastRunId.trim()}`);
+        }
         if (status.lastRunId) {
           const runSnapshot = await api.getRun(status.lastRunId).catch(() => null);
           if (!disposed) {
@@ -386,7 +389,7 @@ export function InspectorPanel({
       disposed = true;
       window.clearInterval(timer);
     };
-  }, [pipelineId, selectedNode]);
+  }, [pipelineId, selectedNode, announceExternalRun]);
 
   if (selectedNode) {
     const definition = getAgentById(selectedNode.data.agentId);
