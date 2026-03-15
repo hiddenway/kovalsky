@@ -707,6 +707,13 @@ export function InspectorPanel({
                   <Button
                     type="button"
                     onClick={() => {
+                      if (!pipeline.workspacePath.trim()) {
+                        updateTriggerState({
+                          ...triggerState,
+                          lastError: "Set Workflow Workspace Path before generating a trigger.",
+                        });
+                        return;
+                      }
                       const trimmedInput = triggerInput.trim();
                       const nextChat = trimmedInput
                         ? [...triggerChat, { role: "user" as const, content: trimmedInput }]
@@ -745,15 +752,22 @@ export function InspectorPanel({
                         }
                       })();
                     }}
-                    disabled={isTriggerBusy || !selectedNode.data.goal.trim()}
+                    disabled={isTriggerBusy || !selectedNode.data.goal.trim() || !pipeline.workspacePath.trim()}
                   >
                     {isTriggerBusy ? "Generating..." : "Generate Trigger"}
                   </Button>
                   <Button
                     type="button"
                     variant="secondary"
-                    disabled={isTriggerBusy || !triggerState.generated || effectiveTriggerStatus === "active"}
+                    disabled={isTriggerBusy || !triggerState.generated || effectiveTriggerStatus === "active" || !pipeline.workspacePath.trim()}
                     onClick={() => {
+                      if (!pipeline.workspacePath.trim()) {
+                        updateTriggerState({
+                          ...triggerState,
+                          lastError: "Set Workflow Workspace Path before activating a trigger.",
+                        });
+                        return;
+                      }
                       const currentTriggerState = updateTriggerState({
                         ...triggerState,
                         workspacePath: pipeline.workspacePath,
@@ -813,9 +827,11 @@ export function InspectorPanel({
               <p className="text-[11px] text-zinc-500">
                 Trigger nodes do not react to manual workflow Run. Generate the trigger first, then activate it so it starts the workflow itself.
               </p>
-              <p className="text-[11px] text-zinc-500">
-                If Workflow Workspace Path is empty, Trigger generation falls back to the current gateway workspace.
-              </p>
+              {!pipeline.workspacePath.trim() ? (
+                <p className="text-[11px] text-amber-300">
+                  Set Workflow Workspace Path first. Trigger generation and activation require an explicit target workspace.
+                </p>
+              ) : null}
 
               {triggerState.summary ? (
                 <div className="rounded-md border border-zinc-800 bg-zinc-950/70 p-2 text-xs text-zinc-300">
