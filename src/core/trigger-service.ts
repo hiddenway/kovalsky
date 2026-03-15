@@ -148,6 +148,12 @@ function extractJsonObject(raw: string): Record<string, unknown> | null {
   }
 }
 
+function resolveWorkspacePath(rawPath: string | undefined): string | null {
+  const input = (rawPath ?? "").trim();
+  const candidate = input || process.cwd();
+  return fs.existsSync(candidate) ? candidate : null;
+}
+
 function buildGenerationPrompt(goal: string, messages: TriggerChatMessage[]): string {
   const history = messages.length > 0
     ? messages
@@ -227,9 +233,9 @@ export class TriggerService {
   }
 
   async generateTrigger(input: TriggerGenerationRequest): Promise<TriggerGenerationResponse> {
-    const workspacePath = input.workspacePath.trim();
-    if (!workspacePath || !fs.existsSync(workspacePath)) {
-      throw new Error("Workspace path is required to generate a trigger.");
+    const workspacePath = resolveWorkspacePath(input.workspacePath);
+    if (!workspacePath) {
+      throw new Error("Workspace path is invalid and fallback workspace was not found.");
     }
 
     const env = await this.runService.buildAutomationEnv();
@@ -379,9 +385,9 @@ export class TriggerService {
     }
 
     const triggerState = this.readTriggerState(node.settings);
-    const workspacePath = triggerState.workspacePath?.trim();
-    if (!workspacePath || !fs.existsSync(workspacePath)) {
-      throw new Error("Trigger workspace path is missing or invalid.");
+    const workspacePath = resolveWorkspacePath(triggerState.workspacePath);
+    if (!workspacePath) {
+      throw new Error("Trigger workspace path is invalid and fallback workspace was not found.");
     }
 
     const config = triggerState.generated;

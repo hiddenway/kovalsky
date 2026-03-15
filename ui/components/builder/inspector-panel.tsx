@@ -745,7 +745,7 @@ export function InspectorPanel({
                         }
                       })();
                     }}
-                    disabled={isTriggerBusy || !pipeline.workspacePath.trim() || !selectedNode.data.goal.trim()}
+                    disabled={isTriggerBusy || !selectedNode.data.goal.trim()}
                   >
                     {isTriggerBusy ? "Generating..." : "Generate Trigger"}
                   </Button>
@@ -812,6 +812,9 @@ export function InspectorPanel({
 
               <p className="text-[11px] text-zinc-500">
                 Trigger nodes do not react to manual workflow Run. Generate the trigger first, then activate it so it starts the workflow itself.
+              </p>
+              <p className="text-[11px] text-zinc-500">
+                If Workflow Workspace Path is empty, Trigger generation falls back to the current gateway workspace.
               </p>
 
               {triggerState.summary ? (
