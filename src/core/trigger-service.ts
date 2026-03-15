@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import type pino from "pino";
@@ -153,7 +154,33 @@ function resolveWorkspacePath(rawPath: string | undefined): string | null {
   if (!input) {
     return null;
   }
-  return fs.existsSync(input) ? input : null;
+
+  const candidates = new Set<string>();
+  candidates.add(path.resolve(input));
+
+  if (input.startsWith("~/") || input === "~") {
+    const suffix = input === "~" ? "" : input.slice(2);
+    candidates.add(path.join(os.homedir(), suffix));
+  }
+
+  if (!path.isAbsolute(input)) {
+    candidates.add(path.resolve(process.cwd(), input));
+    candidates.add(path.join(os.homedir(), input));
+  } else {
+    candidates.add(path.join(os.homedir(), input.replace(/^\/+/, "")));
+  }
+
+  for (const candidate of candidates) {
+    try {
+      if (fs.existsSync(candidate)) {
+        return candidate;
+      }
+    } catch {
+      continue;
+    }
+  }
+
+  return null;
 }
 
 function buildGenerationPrompt(goal: string, messages: TriggerChatMessage[]): string {
