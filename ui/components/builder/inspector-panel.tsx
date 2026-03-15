@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { TriggerGenerationResponse, TriggerStatusResponse } from "@/lib/api/contracts";
+import type { GatewayRunSnapshot, TriggerGenerationResponse, TriggerHistoryEntry, TriggerStatusResponse } from "@/lib/api/contracts";
 import { getAgentById, getAgentSettingFields, isTriggerAgent, type AgentSettingField } from "@/lib/agents";
 import { getApiClient } from "@/lib/api/client";
 import type { PipelineNodeData, ReactFlowEdge, ReactFlowNode } from "@/lib/types";
@@ -66,6 +66,7 @@ type TriggerState = {
   lastFireAt?: string | null;
   lastRunId?: string | null;
   lastError?: string | null;
+  history?: TriggerHistoryEntry[];
 };
 
 function isObjectRecord(value: unknown): value is Record<string, unknown> {
@@ -227,6 +228,7 @@ export function InspectorPanel({
   const [triggerInput, setTriggerInput] = useState("");
   const [isTriggerBusy, setIsTriggerBusy] = useState(false);
   const [triggerRuntimeStatus, setTriggerRuntimeStatus] = useState<TriggerStatusResponse | null>(null);
+  const [triggerLastRunSnapshot, setTriggerLastRunSnapshot] = useState<GatewayRunSnapshot | null>(null);
   const chatBottomRef = useRef<HTMLDivElement | null>(null);
   const chatInitializedForNodeRef = useRef<string | null>(null);
   const externalRunSeenRef = useRef<Set<string>>(new Set());
@@ -346,6 +348,7 @@ export function InspectorPanel({
   useEffect(() => {
     if (!selectedNode || !isTriggerAgent(selectedNode.data.agentId)) {
       setTriggerRuntimeStatus(null);
+      setTriggerLastRunSnapshot(null);
       setTriggerInput("");
       return;
     }
@@ -358,9 +361,18 @@ export function InspectorPanel({
         if (!disposed) {
           setTriggerRuntimeStatus(status);
         }
+        if (status.lastRunId) {
+          const runSnapshot = await api.getRun(status.lastRunId).catch(() => null);
+          if (!disposed) {
+            setTriggerLastRunSnapshot(runSnapshot);
+          }
+        } else if (!disposed) {
+          setTriggerLastRunSnapshot(null);
+        }
       } catch {
         if (!disposed) {
           setTriggerRuntimeStatus(null);
+          setTriggerLastRunSnapshot(null);
         }
       }
     };
@@ -588,6 +600,21 @@ export function InspectorPanel({
     const triggerState = readTriggerState(settings);
     const triggerChat = Array.isArray(triggerState.chat) ? triggerState.chat : [];
     const effectiveTriggerStatus = triggerRuntimeStatus?.status ?? triggerState.lifecycleStatus ?? "draft";
+    const triggerHistory = triggerRuntimeStatus?.history ?? triggerState.history ?? [];
+    const triggerConversation = [
+      ...triggerChat.map((message, index) => ({
+        id: `chat-${index}`,
+        role: message.role,
+        content: message.content,
+        meta: null as string | null,
+      })),
+      ...triggerHistory.map((entry) => ({
+        id: entry.id,
+        role: "assistant" as const,
+        content: entry.content,
+        meta: entry.at,
+      })),
+    ];
 
     const updateTriggerState = (nextTriggerState: TriggerState): Record<string, unknown> => {
       const nextSettings = {
@@ -873,9 +900,9 @@ export function InspectorPanel({
               <div className="space-y-2">
                 <p className="text-xs text-zinc-400">Trigger Chat</p>
                 <div className="max-h-64 space-y-2 overflow-y-auto rounded-md border border-zinc-800 bg-zinc-950/70 p-2">
-                  {triggerChat.length > 0 ? triggerChat.map((message, index) => (
+                  {triggerConversation.length > 0 ? triggerConversation.map((message) => (
                     <div
-                      key={`${message.role}-${index}`}
+                      key={message.id}
                       className={
                         message.role === "assistant"
                           ? "rounded-md border border-cyan-500/30 bg-cyan-500/10 p-2 text-xs text-cyan-50"
@@ -885,10 +912,11 @@ export function InspectorPanel({
                       <p className="mb-1 text-[10px] uppercase tracking-wide text-zinc-400">
                         {message.role === "assistant" ? "Trigger" : "You"}
                       </p>
+                      {message.meta ? <p className="mb-1 text-[10px] text-zinc-500">{message.meta}</p> : null}
                       <p className="whitespace-pre-wrap break-words">{message.content}</p>
                     </div>
                   )) : (
-                    <p className="text-xs text-zinc-500">Generation questions and answers will appear here.</p>
+                    <p className="text-xs text-zinc-500">Generation questions, trigger events, and launch logs will appear here.</p>
                   )}
                 </div>
                 <div className="flex gap-2">
@@ -900,6 +928,24 @@ export function InspectorPanel({
                   />
                 </div>
               </div>
+
+              {triggerLastRunSnapshot?.run ? (
+                <div className="space-y-2 rounded-md border border-zinc-800 bg-zinc-950/70 p-3">
+                  <p className="text-xs text-zinc-400">Launched Run Stages</p>
+                  <p className="text-xs text-zinc-500">Run {triggerLastRunSnapshot.run.id} · {triggerLastRunSnapshot.run.status}</p>
+                  <div className="space-y-2">
+                    {triggerLastRunSnapshot.stepRuns.map((stepRun) => (
+                      <div key={stepRun.id} className="rounded-md border border-zinc-800 bg-zinc-900/70 p-2 text-xs text-zinc-200">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="break-all">{stepRun.agent_id} · {stepRun.node_id}</span>
+                          <span className="capitalize text-zinc-400">{stepRun.status}</span>
+                        </div>
+                        {stepRun.error_summary ? <p className="mt-1 text-rose-300">{stepRun.error_summary}</p> : null}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
             </div>
           ) : null}
 

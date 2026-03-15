@@ -42,6 +42,12 @@ type TriggerGeneratedConfig =
       scriptPath?: string;
     };
 
+type TriggerHistoryEntry = {
+  id: string;
+  at: string;
+  content: string;
+};
+
 type TriggerGenerationResponse =
   | {
       status: "needs_input";
@@ -71,6 +77,7 @@ type ActiveWatcher = {
   lastRunId: string | null;
   lastError: string | null;
   webhookPath: string | null;
+  history: TriggerHistoryEntry[];
 };
 
 type TriggerStatusResponse = {
@@ -82,6 +89,7 @@ type TriggerStatusResponse = {
   lastFireAt?: string | null;
   lastRunId?: string | null;
   lastError?: string | null;
+  history?: TriggerHistoryEntry[];
 };
 
 function isObjectRecord(value: unknown): value is Record<string, unknown> {
@@ -119,6 +127,29 @@ function ensureArrayOfStrings(value: unknown): string[] {
   return Array.isArray(value)
     ? value.map((item) => asString(item).trim()).filter(Boolean)
     : [];
+}
+
+function normalizeHistoryEntries(value: unknown): TriggerHistoryEntry[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((item) => {
+      if (!isObjectRecord(item)) {
+        return null;
+      }
+      const content = asString(item.content).trim();
+      if (!content) {
+        return null;
+      }
+      return {
+        id: asString(item.id).trim() || randomUUID(),
+        at: asString(item.at).trim() || new Date().toISOString(),
+        content,
+      } satisfies TriggerHistoryEntry;
+    })
+    .filter((item): item is TriggerHistoryEntry => Boolean(item));
 }
 
 function extractJsonObject(raw: string): Record<string, unknown> | null {
@@ -438,6 +469,7 @@ export class TriggerService {
       lastRunId: null,
       lastError: null,
       webhookPath: config.type === "webhook" ? `/trigger-hooks/${config.token}` : null,
+      history: triggerState.history ?? [],
     };
 
     if (config.type === "script_poll") {
@@ -450,6 +482,17 @@ export class TriggerService {
     }
 
     this.watchers.set(watcher.key, watcher);
+    watcher.history.push({
+      id: randomUUID(),
+      at: new Date().toISOString(),
+      content: `Trigger activated (${config.type}).`,
+    });
+    watcher.history = watcher.history.slice(-20);
+    this.appendTriggerHistory(input.pipelineId, input.nodeId, `Trigger activated (${config.type}).`);
+    this.persistTriggerState(input.pipelineId, input.nodeId, {
+      lifecycleStatus: "active",
+      lastError: null,
+    });
     return this.buildStatusResponse(watcher, triggerState.summary);
   }
 
@@ -467,6 +510,10 @@ export class TriggerService {
         this.webhookIndex.delete(existing.config.token);
       }
       this.watchers.delete(key);
+      this.appendTriggerHistory(input.pipelineId, input.nodeId, "Trigger paused.");
+      this.persistTriggerState(input.pipelineId, input.nodeId, {
+        lifecycleStatus: "paused",
+      });
       return this.buildStatusResponse(null, undefined, existing);
     }
 
@@ -483,6 +530,8 @@ export class TriggerService {
       summary: triggerState.summary,
       webhookPath: triggerState.generated?.type === "webhook" ? `/trigger-hooks/${triggerState.generated.token}` : null,
       scriptPath: triggerState.generated?.type === "script_poll" ? triggerState.generated.scriptPath ?? null : null,
+      lastError: triggerState.lastError ?? null,
+      history: triggerState.history ?? [],
     };
   }
 
@@ -507,6 +556,8 @@ export class TriggerService {
       summary: triggerState.summary,
       webhookPath: triggerState.generated?.type === "webhook" ? `/trigger-hooks/${triggerState.generated.token}` : null,
       scriptPath: triggerState.generated?.type === "script_poll" ? triggerState.generated.scriptPath ?? null : null,
+      lastError: triggerState.lastError ?? null,
+      history: triggerState.history ?? [],
     };
   }
 
@@ -591,6 +642,11 @@ export class TriggerService {
       const payload = this.parsePollOutput(stdoutLines);
       if (!payload.triggered) {
         watcher.lastError = stderrLines.filter(Boolean).slice(-1)[0] ?? null;
+        if (watcher.lastError) {
+          this.persistTriggerState(watcher.pipelineId, watcher.nodeId, {
+            lastError: watcher.lastError,
+          });
+        }
         return;
       }
 
@@ -602,6 +658,9 @@ export class TriggerService {
     } catch (error) {
       watcher.lastError = error instanceof Error ? error.message : "Trigger poll failed.";
       this.logger.warn({ err: error, key }, "trigger poll failed");
+      this.persistTriggerState(watcher.pipelineId, watcher.nodeId, {
+        lastError: watcher.lastError,
+      });
     } finally {
       watcher.runningCheck = false;
     }
@@ -654,6 +713,11 @@ export class TriggerService {
     }
 
     const graph = JSON.parse(pipeline.graph_json) as PipelineGraph;
+    const nextStages = graph.edges
+      .filter((edge) => edge.source === watcher.nodeId)
+      .map((edge) => graph.nodes.find((node) => node.id === edge.target))
+      .filter((node): node is NonNullable<typeof node> => Boolean(node))
+      .map((node) => `${node.agentId}:${node.id}`);
     const started = await this.runService.startRun(watcher.pipelineId, graph, {
       workspacePath: watcher.workspacePath,
       clearNodeChatContext: false,
@@ -662,6 +726,27 @@ export class TriggerService {
     watcher.lastFireAt = new Date().toISOString();
     watcher.lastRunId = started.runId;
     watcher.lastError = null;
+    const triggerReason = this.extractTriggerReason(meta);
+    const historyLines = [
+      `Trigger fired: ${triggerReason}`,
+      `Workflow run started: ${started.runId}`,
+      nextStages.length > 0 ? `Started stages: ${nextStages.join(", ")}` : "Started stages: none",
+    ];
+    for (const line of historyLines) {
+      watcher.history.push({
+        id: randomUUID(),
+        at: new Date().toISOString(),
+        content: line,
+      });
+    }
+    watcher.history = watcher.history.slice(-20);
+    this.persistTriggerState(watcher.pipelineId, watcher.nodeId, {
+      lifecycleStatus: "active",
+      lastFireAt: watcher.lastFireAt,
+      lastRunId: watcher.lastRunId,
+      lastError: null,
+      history: watcher.history,
+    });
 
     this.runService.appendNodeChat({
       runId: started.runId,
@@ -691,6 +776,8 @@ export class TriggerService {
     summary?: string;
     workspacePath?: string;
     generated?: TriggerGeneratedConfig;
+    history?: TriggerHistoryEntry[];
+    lastError?: string | null;
   } {
     const trigger = isObjectRecord(settings?.trigger) ? settings.trigger : {};
     const lifecycleRaw = asString(trigger.lifecycleStatus).trim().toLowerCase();
@@ -703,6 +790,8 @@ export class TriggerService {
       summary,
       workspacePath,
       generated,
+      history: normalizeHistoryEntries(trigger.history),
+      lastError: asString(trigger.lastError).trim() || null,
     };
   }
 
@@ -760,10 +849,65 @@ export class TriggerService {
       lastFireAt: source.lastFireAt,
       lastRunId: source.lastRunId,
       lastError: source.lastError,
+      history: source.history,
     };
   }
 
   private toWatcherKey(pipelineId: string, nodeId: string): string {
     return `${pipelineId}:${nodeId}`;
+  }
+
+  private appendTriggerHistory(pipelineId: string, nodeId: string, content: string): void {
+    const pipeline = this.db.getPipeline(pipelineId);
+    if (!pipeline) {
+      return;
+    }
+    const graph = JSON.parse(pipeline.graph_json) as PipelineGraph;
+    const node = graph.nodes.find((item) => item.id === nodeId);
+    if (!node) {
+      return;
+    }
+    const settings = isObjectRecord(node.settings) ? { ...node.settings } : {};
+    const trigger = isObjectRecord(settings.trigger) ? { ...settings.trigger } : {};
+    const history = normalizeHistoryEntries(trigger.history);
+    history.push({
+      id: randomUUID(),
+      at: new Date().toISOString(),
+      content,
+    });
+    trigger.history = history.slice(-20);
+    settings.trigger = trigger;
+    node.settings = settings;
+    this.db.updatePipeline(pipeline.id, pipeline.name, JSON.stringify(graph));
+  }
+
+  private persistTriggerState(pipelineId: string, nodeId: string, patch: Record<string, unknown>): void {
+    const pipeline = this.db.getPipeline(pipelineId);
+    if (!pipeline) {
+      return;
+    }
+    const graph = JSON.parse(pipeline.graph_json) as PipelineGraph;
+    const node = graph.nodes.find((item) => item.id === nodeId);
+    if (!node) {
+      return;
+    }
+    const settings = isObjectRecord(node.settings) ? { ...node.settings } : {};
+    const trigger = isObjectRecord(settings.trigger) ? { ...settings.trigger } : {};
+    settings.trigger = {
+      ...trigger,
+      ...patch,
+    };
+    node.settings = settings;
+    this.db.updatePipeline(pipeline.id, pipeline.name, JSON.stringify(graph));
+  }
+
+  private extractTriggerReason(meta: Record<string, unknown>): string {
+    const payload = isObjectRecord(meta.payload) ? meta.payload : null;
+    const reason = payload ? asString(payload.reason).trim() : "";
+    if (reason) {
+      return reason;
+    }
+    const source = asString(meta.source).trim();
+    return source ? `source=${source}` : "source=unknown";
   }
 }

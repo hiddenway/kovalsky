@@ -120,6 +120,12 @@ export type TriggerChatMessage = {
   content: string;
 };
 
+export type TriggerHistoryEntry = {
+  id: string;
+  at: string;
+  content: string;
+};
+
 export type TriggerGeneratedConfig =
   | {
       type: "webhook";
@@ -162,6 +168,7 @@ export type TriggerStatusResponse = {
   lastFireAt?: string | null;
   lastRunId?: string | null;
   lastError?: string | null;
+  history?: TriggerHistoryEntry[];
 };
 
 export interface KovalskyApiClient {
