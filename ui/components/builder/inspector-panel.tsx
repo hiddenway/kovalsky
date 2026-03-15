@@ -352,20 +352,27 @@ export function InspectorPanel({
 
     let disposed = false;
     const api = getApiClient();
-    void api.getTriggerStatus(pipelineId, selectedNode.id)
-      .then((status) => {
+    const syncStatus = async (): Promise<void> => {
+      try {
+        const status = await api.getTriggerStatus(pipelineId, selectedNode.id);
         if (!disposed) {
           setTriggerRuntimeStatus(status);
         }
-      })
-      .catch(() => {
+      } catch {
         if (!disposed) {
           setTriggerRuntimeStatus(null);
         }
-      });
+      }
+    };
+
+    void syncStatus();
+    const timer = window.setInterval(() => {
+      void syncStatus();
+    }, 2000);
 
     return () => {
       disposed = true;
+      window.clearInterval(timer);
     };
   }, [pipelineId, selectedNode]);
 
@@ -838,6 +845,9 @@ export function InspectorPanel({
                   <p>{triggerState.summary}</p>
                   {triggerState.webhookPath ? <p className="mt-2 break-all text-zinc-400">Webhook: {triggerState.webhookPath}</p> : null}
                   {triggerState.scriptPath ? <p className="mt-1 break-all text-zinc-400">Script: {triggerState.scriptPath}</p> : null}
+                  {isObjectRecord(triggerState.generated) && typeof triggerState.generated.intervalSeconds === "number" ? (
+                    <p className="mt-1 text-zinc-400">Polling interval: {triggerState.generated.intervalSeconds} sec</p>
+                  ) : null}
                 </div>
               ) : null}
 
@@ -851,6 +861,12 @@ export function InspectorPanel({
               ) : triggerRuntimeStatus?.lastError ? (
                 <div className="rounded-md border border-rose-900/70 bg-rose-950/40 p-2 text-xs text-rose-200">
                   {triggerRuntimeStatus.lastError}
+                </div>
+              ) : null}
+
+              {!triggerRuntimeStatus?.lastError && triggerState.lastError ? (
+                <div className="rounded-md border border-rose-900/70 bg-rose-950/40 p-2 text-xs text-rose-200">
+                  {triggerState.lastError}
                 </div>
               ) : null}
 

@@ -444,6 +444,7 @@ export class TriggerService {
       watcher.timer = setInterval(() => {
         void this.pollWatcher(watcher.key);
       }, config.intervalSeconds * 1000);
+      void this.pollWatcher(watcher.key);
     } else {
       this.webhookIndex.set(config.token, watcher.key);
     }
