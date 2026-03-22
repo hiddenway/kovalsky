@@ -1,5 +1,4 @@
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import type pino from "pino";
@@ -8,6 +7,7 @@ import { DatabaseService } from "../db";
 import { ProcessManager } from "./process-manager";
 import { RunService } from "./run-service";
 import type { PipelineGraph } from "../types";
+import { resolveWorkspacePath } from "../utils/workspace-path";
 
 type TriggerChatRole = "user" | "assistant";
 
@@ -180,40 +180,6 @@ function extractJsonObject(raw: string): Record<string, unknown> | null {
   }
 }
 
-function resolveWorkspacePath(rawPath: string | undefined): string | null {
-  const input = (rawPath ?? "").trim();
-  if (!input) {
-    return null;
-  }
-
-  const candidates = new Set<string>();
-  candidates.add(path.resolve(input));
-
-  if (input.startsWith("~/") || input === "~") {
-    const suffix = input === "~" ? "" : input.slice(2);
-    candidates.add(path.join(os.homedir(), suffix));
-  }
-
-  if (!path.isAbsolute(input)) {
-    candidates.add(path.resolve(process.cwd(), input));
-    candidates.add(path.join(os.homedir(), input));
-  } else {
-    candidates.add(path.join(os.homedir(), input.replace(/^\/+/, "")));
-  }
-
-  for (const candidate of candidates) {
-    try {
-      if (fs.existsSync(candidate)) {
-        return candidate;
-      }
-    } catch {
-      continue;
-    }
-  }
-
-  return null;
-}
-
 function buildGenerationPrompt(goal: string, messages: TriggerChatMessage[]): string {
   const history = messages.length > 0
     ? messages
@@ -295,7 +261,11 @@ export class TriggerService {
   async generateTrigger(input: TriggerGenerationRequest): Promise<TriggerGenerationResponse> {
     const workspacePath = resolveWorkspacePath(input.workspacePath);
     if (!workspacePath) {
-      throw new Error("Workspace path is required to generate a trigger.");
+      const providedPath = (input.workspacePath ?? "").trim();
+      if (!providedPath) {
+        throw new Error("Workspace path is required to generate a trigger.");
+      }
+      throw new Error(`Workspace path not found or inaccessible: ${providedPath}`);
     }
 
     const env = await this.runService.buildAutomationEnv();

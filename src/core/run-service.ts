@@ -26,6 +26,7 @@ import { normalizeUrlCandidate } from "../utils/url";
 import { readCodexAuthState } from "../utils/codex-auth";
 import { SettingsService } from "./settings-service";
 import type { OpenClawProviderMode } from "./settings-service";
+import { resolveWorkspacePath } from "../utils/workspace-path";
 
 interface ActiveRunControl {
   canceled: boolean;
@@ -189,37 +190,7 @@ export class RunService {
   }
 
   private resolveWorkspacePath(rawPath: string): string | null {
-    const input = rawPath.trim();
-    if (!input) {
-      return null;
-    }
-
-    const candidates = new Set<string>();
-    candidates.add(path.resolve(input));
-
-    if (input.startsWith("~/") || input === "~") {
-      const suffix = input === "~" ? "" : input.slice(2);
-      candidates.add(path.join(os.homedir(), suffix));
-    }
-
-    if (!path.isAbsolute(input)) {
-      candidates.add(path.resolve(process.cwd(), input));
-      candidates.add(path.join(os.homedir(), input));
-    } else {
-      candidates.add(path.join(os.homedir(), input.replace(/^\/+/, "")));
-    }
-
-    for (const candidate of candidates) {
-      try {
-        if (fs.existsSync(candidate)) {
-          return candidate;
-        }
-      } catch {
-        continue;
-      }
-    }
-
-    return null;
+    return resolveWorkspacePath(rawPath);
   }
 
   async cancelRun(runId: string): Promise<boolean> {
