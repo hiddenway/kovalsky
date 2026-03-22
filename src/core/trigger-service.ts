@@ -178,8 +178,103 @@ function extractJsonObject(raw: string): Record<string, unknown> | null {
     const parsed = JSON.parse(cleaned.slice(start, end + 1)) as unknown;
     return isObjectRecord(parsed) ? parsed : null;
   } catch {
+    // keep trying below
+  }
+
+  const statusMatches = [...cleaned.matchAll(/"status"\s*:\s*"(?:needs_input|ready)"/g)];
+  for (const match of statusMatches) {
+    const markerIndex = match.index ?? -1;
+    if (markerIndex < 0) {
+      continue;
+    }
+
+    let startIndex = cleaned.lastIndexOf("{", markerIndex);
+    while (startIndex >= 0) {
+      const candidate = extractBalancedJsonObject(cleaned, startIndex);
+      if (candidate) {
+        try {
+          const parsed = JSON.parse(candidate) as unknown;
+          if (isObjectRecord(parsed) && typeof parsed.status === "string") {
+            return parsed;
+          }
+        } catch {
+          // continue searching
+        }
+      }
+      startIndex = cleaned.lastIndexOf("{", startIndex - 1);
+    }
+  }
+
+  return null;
+}
+
+function extractBalancedJsonObject(text: string, startIndex: number): string | null {
+  if (startIndex < 0 || text[startIndex] !== "{") {
     return null;
   }
+
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let index = startIndex; index < text.length; index += 1) {
+    const char = text[index];
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (char === "\\") {
+        escaped = true;
+        continue;
+      }
+      if (char === "\"") {
+        inString = false;
+      }
+      continue;
+    }
+
+    if (char === "\"") {
+      inString = true;
+      continue;
+    }
+
+    if (char === "{") {
+      depth += 1;
+      continue;
+    }
+
+    if (char === "}") {
+      depth -= 1;
+      if (depth === 0) {
+        return text.slice(startIndex, index + 1);
+      }
+      continue;
+    }
+  }
+
+  return null;
+}
+
+function extractQuestionCandidatesFromRaw(raw: string): string[] {
+  const lines = raw
+    .replace(/\u001b\[[0-9;]*m/g, "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line && !line.startsWith("```"));
+
+  const questions: string[] = [];
+  for (const line of lines) {
+    const normalized = line
+      .replace(/^\d+\.\s+/, "")
+      .replace(/^[-*]\s+/, "")
+      .trim();
+    if (!normalized.includes("?")) {
+      continue;
+    }
+    questions.push(normalized);
+  }
+
+  return questions;
 }
 
 function normalizeQuestionKey(input: string): string {
@@ -374,7 +469,7 @@ export class TriggerService {
         status: "needs_input",
         questions: buildNeedsInputQuestions(
           input.messages ?? [],
-          ["I could not derive a valid trigger yet. Describe the exact trigger source and event condition."],
+          extractQuestionCandidatesFromRaw(raw),
           "Describe the exact trigger source and event condition.",
         ),
         raw,
@@ -388,7 +483,7 @@ export class TriggerService {
         status: "needs_input",
         questions: buildNeedsInputQuestions(
           input.messages ?? [],
-          questions,
+          questions.length > 0 ? questions : extractQuestionCandidatesFromRaw(raw),
           "Describe the exact event to monitor for this trigger.",
         ),
         raw,
