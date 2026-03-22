@@ -99,6 +99,31 @@ export class ToolchainService {
       throw new Error(`Required CLI "${command}" was not found in PATH (runtime mode: system).`);
     }
 
+    // Trigger generation relies on OpenClaw report mode and is sensitive to
+    // older system-wide OpenClaw builds. Prefer managed/bundled toolchain first.
+    if (agentId === "trigger" && tool === "openclaw") {
+      const managed = this.getManagedBinaryPath(tool);
+      if (managed) {
+        this.ensureManagedNodeShim();
+        return managed;
+      }
+
+      const bundled = this.getBundledBinaryPath(tool);
+      if (bundled) {
+        return bundled;
+      }
+
+      try {
+        return await this.installTool(tool);
+      } catch (error) {
+        if (this.commandExists(trimmedCommand)) {
+          this.logger.warn({ err: error }, "falling back to system openclaw for trigger agent");
+          return trimmedCommand;
+        }
+        throw error;
+      }
+    }
+
     const managed = this.getManagedBinaryPath(tool);
     if (managed) {
       this.ensureManagedNodeShim();
