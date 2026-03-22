@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { spawn, spawnSync } from "node:child_process";
 import type pino from "pino";
@@ -116,9 +117,10 @@ export class ToolchainService {
       try {
         return await this.installTool(tool);
       } catch (error) {
-        if (this.commandExists(trimmedCommand)) {
+        const systemOpenClaw = this.resolveSystemOpenClawCommand();
+        if (systemOpenClaw) {
           this.logger.warn({ err: error }, "falling back to system openclaw for trigger agent");
-          return trimmedCommand;
+          return systemOpenClaw;
         }
         throw error;
       }
@@ -126,8 +128,11 @@ export class ToolchainService {
 
     // For interactive OpenClaw agent runs, prefer user's system OpenClaw first.
     // This keeps CLI/browser-gateway protocol aligned when a local gateway is already running.
-    if (agentId === "openclaw" && tool === "openclaw" && this.commandExists(trimmedCommand)) {
-      return trimmedCommand;
+    if (agentId === "openclaw" && tool === "openclaw") {
+      const systemOpenClaw = this.resolveSystemOpenClawCommand();
+      if (systemOpenClaw) {
+        return systemOpenClaw;
+      }
     }
 
     const managed = this.getManagedBinaryPath(tool);
@@ -583,7 +588,23 @@ export class ToolchainService {
       };
     }
 
-    if (tool === "openclaw" && this.commandExists(command)) {
+    if (tool === "openclaw") {
+      const systemOpenClaw = this.resolveSystemOpenClawCommand();
+      if (!systemOpenClaw) {
+        // continue with local fallbacks below
+      } else {
+        return {
+          tool,
+          command: systemOpenClaw,
+          packageName,
+          status: "ready",
+          source: "system",
+          error: null,
+        };
+      }
+    }
+
+    if (this.commandExists(command)) {
       return {
         tool,
         command,
@@ -662,6 +683,56 @@ export class ToolchainService {
 
   private resolvePackageName(tool: KnownTool): string {
     return process.env[PACKAGE_ENV_BY_TOOL[tool]]?.trim() || DEFAULT_PACKAGE_BY_TOOL[tool];
+  }
+
+  private resolveSystemOpenClawCommand(): string | null {
+    const overridePath = (process.env.KOVALSKY_OPENCLAW_SYSTEM_PATH ?? "").trim();
+    if (overridePath && this.commandExists(overridePath)) {
+      return overridePath;
+    }
+
+    if (this.commandExists("openclaw")) {
+      return "openclaw";
+    }
+
+    const executable = process.platform === "win32" ? "openclaw.cmd" : "openclaw";
+    const candidates = new Set<string>();
+
+    if (process.platform === "win32") {
+      candidates.add(path.join(process.env.ProgramFiles ?? "C:\\Program Files", "nodejs", executable));
+      candidates.add(path.join(process.env.APPDATA ?? "", "npm", executable));
+    } else {
+      candidates.add(path.join("/opt/homebrew/bin", executable));
+      candidates.add(path.join("/usr/local/bin", executable));
+      candidates.add(path.join("/usr/bin", executable));
+      candidates.add(path.join(os.homedir(), ".local", "bin", executable));
+      candidates.add(path.join(os.homedir(), "bin", executable));
+      candidates.add(path.join(os.homedir(), ".volta", "bin", executable));
+    }
+
+    const nvmRoot = path.join(os.homedir(), ".nvm", "versions", "node");
+    try {
+      if (fs.existsSync(nvmRoot)) {
+        const nodeVersions = fs
+          .readdirSync(nvmRoot, { withFileTypes: true })
+          .filter((entry) => entry.isDirectory())
+          .map((entry) => entry.name)
+          .sort((left, right) => right.localeCompare(left, undefined, { numeric: true, sensitivity: "base" }));
+        for (const versionDir of nodeVersions) {
+          candidates.add(path.join(nvmRoot, versionDir, "bin", executable));
+        }
+      }
+    } catch {
+      // ignore nvm directory errors
+    }
+
+    for (const candidate of candidates) {
+      if (candidate && this.commandExists(candidate)) {
+        return candidate;
+      }
+    }
+
+    return null;
   }
 
   private extractCodexDeviceAuth(raw: string): CodexLoginStartResult | null {
