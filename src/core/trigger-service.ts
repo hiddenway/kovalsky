@@ -497,12 +497,14 @@ export class TriggerService {
       timeoutMs: 120_000,
     });
 
-    const fatalError = extractFatalGenerationError(raw);
-    if (fatalError) {
-      throw new Error(`Trigger generation failed: ${fatalError}`);
+    const parsed = extractJsonObject(raw);
+    if (!parsed) {
+      const fatalError = extractFatalGenerationError(raw);
+      if (fatalError) {
+        throw new Error(`Trigger generation failed: ${fatalError}`);
+      }
     }
 
-    const parsed = extractJsonObject(raw);
     if (!parsed) {
       return {
         status: "needs_input",

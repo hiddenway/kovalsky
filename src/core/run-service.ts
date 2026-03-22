@@ -1467,6 +1467,7 @@ export class RunService {
       fs.mkdirSync(input.stateDir, { recursive: true });
       this.seedOpenClawStateFromNative(input.stateDir);
       const authPath = path.join(input.stateDir, "agents", "main", "agent", "auth-profiles.json");
+      const legacyAuthPath = path.join(input.stateDir, "agents", "main", "agent", "auth.json");
       const configPath = path.join(input.stateDir, "openclaw.json");
       const isOpenAiApiKey = this.looksLikeOpenAIApiKey(input.token);
 
@@ -1494,6 +1495,34 @@ export class RunService {
         }
         if (!authStore.usageStats || typeof authStore.usageStats !== "object") {
           authStore.usageStats = {};
+        }
+
+        // When OpenClaw auth is sourced from Codex OAuth, prefer a token-based
+        // profile wired to the latest Codex access token. This avoids stale
+        // refresh-token state copied from legacy ~/.openclaw profiles.
+        if (input.tokenSource === "codex_oauth") {
+          const profileId = "openai-codex:gateway";
+          authStore.profiles[profileId] = {
+            type: "token",
+            provider: "openai-codex",
+            token: input.token,
+          };
+          authStore.lastGood["openai-codex"] = profileId;
+          this.writeJsonObject(authPath, authStore);
+
+          const legacyAuthRaw = this.readJsonObject(legacyAuthPath);
+          const legacyOpenAiCodex = (legacyAuthRaw["openai-codex"] && typeof legacyAuthRaw["openai-codex"] === "object")
+            ? { ...(legacyAuthRaw["openai-codex"] as Record<string, unknown>) }
+            : {};
+          legacyAuthRaw["openai-codex"] = {
+            ...legacyOpenAiCodex,
+            type: "token",
+            token: input.token,
+          };
+          delete (legacyAuthRaw["openai-codex"] as Record<string, unknown>).refresh;
+          delete (legacyAuthRaw["openai-codex"] as Record<string, unknown>).access;
+          delete (legacyAuthRaw["openai-codex"] as Record<string, unknown>).expires;
+          this.writeJsonObject(legacyAuthPath, legacyAuthRaw);
         }
 
         const hasCodexProfile = Object.entries(authStore.profiles).some(([profileId, profileValue]) => {
