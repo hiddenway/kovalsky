@@ -1559,18 +1559,18 @@ export class RunService {
     }
 
     const filesToCopy = [
-      ["agents/main/agent/auth-profiles.json", "agents/main/agent/auth-profiles.json"],
-      ["agents/main/agent/auth.json", "agents/main/agent/auth.json"],
-      ["identity/device.json", "identity/device.json"],
-      ["identity/device-auth.json", "identity/device-auth.json"],
-      ["devices/paired.json", "devices/paired.json"],
-      ["devices/pending.json", "devices/pending.json"],
+      ["agents/main/agent/auth-profiles.json", "agents/main/agent/auth-profiles.json", true],
+      ["agents/main/agent/auth.json", "agents/main/agent/auth.json", true],
+      ["identity/device.json", "identity/device.json", true],
+      ["identity/device-auth.json", "identity/device-auth.json", true],
+      ["devices/paired.json", "devices/paired.json", true],
+      ["devices/pending.json", "devices/pending.json", true],
     ] as const;
 
-    for (const [sourceRelativePath, targetRelativePath] of filesToCopy) {
+    for (const [sourceRelativePath, targetRelativePath, overwriteExisting] of filesToCopy) {
       const sourcePath = path.join(nativeStateDir, sourceRelativePath);
       const targetPath = path.join(targetStateDir, targetRelativePath);
-      if (!fs.existsSync(sourcePath) || fs.existsSync(targetPath)) {
+      if (!fs.existsSync(sourcePath) || (!overwriteExisting && fs.existsSync(targetPath))) {
         continue;
       }
       try {
