@@ -92,6 +92,8 @@ type TriggerStatusResponse = {
   history?: TriggerHistoryEntry[];
 };
 
+const MAX_TRIGGER_QUESTIONS = 5;
+
 function isObjectRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -180,171 +182,53 @@ function extractJsonObject(raw: string): Record<string, unknown> | null {
   }
 }
 
-function includesAny(text: string, needles: readonly string[]): boolean {
-  return needles.some((needle) => text.includes(needle));
+function normalizeQuestionKey(input: string): string {
+  return input
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
-function collectTriggerTextCorpus(goal: string, messages: TriggerChatMessage[]): string {
-  return [goal, ...messages.map((message) => message.content)]
-    .map((item) => item.trim())
-    .filter(Boolean)
-    .join("\n");
-}
+function buildNeedsInputQuestions(
+  messages: TriggerChatMessage[],
+  candidateQuestions: string[],
+  fallback: string,
+): string[] {
+  const asked = messages
+    .filter((message) => message.role === "assistant")
+    .map((message) => normalizeQuestionKey(message.content))
+    .filter(Boolean);
+  const askedSet = new Set(asked);
+  const remaining = Math.max(0, MAX_TRIGGER_QUESTIONS - asked.length);
 
-function extractTelegramBotTokenFromText(text: string): string | null {
-  const matches = text.match(/\b\d{6,12}:[A-Za-z0-9_-]{20,}\b/g);
-  if (!matches || matches.length === 0) {
-    return null;
-  }
-  return matches[matches.length - 1] ?? null;
-}
-
-function shouldUseTelegramAnyTextPolling(goal: string, messages: TriggerChatMessage[]): {
-  token: string;
-} | null {
-  const corpus = collectTriggerTextCorpus(goal, messages);
-  const token = extractTelegramBotTokenFromText(corpus);
-  if (!token) {
-    return null;
+  if (remaining === 0) {
+    return [
+      "Question limit reached (5). Provide one precise trigger spec in a single message: source, event condition, webhook or polling, and auth requirements.",
+    ];
   }
 
-  const normalized = corpus.toLowerCase();
-  const hasTelegramHint = includesAny(normalized, [
-    "telegram",
-    "телеграм",
-    "бот",
-    "bot",
-  ]);
-  const hasPollingHint = includesAny(normalized, [
-    "polling",
-    "poll",
-    "long poll",
-    "лонгполл",
-    "через токен",
-    "по токену",
-    "token",
-  ]);
-  const hasAnyTextHint = includesAny(normalized, [
-    "any text",
-    "any message",
-    "every message",
-    "all messages",
-    "любой текст",
-    "любое сообщение",
-    "каждое сообщение",
-    "каждое новое сообщение",
-    "все сообщения",
-    "всё что угодно",
-    "что отправит пользователь",
-  ]);
-
-  if (!hasTelegramHint) {
-    return null;
-  }
-  if (!hasPollingHint && !hasAnyTextHint) {
-    return null;
+  const unique: string[] = [];
+  const seen = new Set<string>();
+  for (const question of candidateQuestions.map((item) => item.trim()).filter(Boolean)) {
+    const key = normalizeQuestionKey(question);
+    if (!key || askedSet.has(key) || seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    unique.push(question);
   }
 
-  return { token };
-}
+  if (unique.length === 0) {
+    const normalizedFallback = normalizeQuestionKey(fallback);
+    if (!askedSet.has(normalizedFallback)) {
+      unique.push(fallback);
+    } else {
+      unique.push("Provide one precise trigger spec in a single message: source, event condition, webhook or polling, and auth requirements.");
+    }
+  }
 
-function buildTelegramAnyTextPollingScript(token: string, nodeId: string): {
-  fileName: string;
-  content: string;
-} {
-  const safeNodeId = nodeId.trim().replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "") || "trigger";
-  const fileName = `telegram-any-text-${safeNodeId}.mjs`;
-  const stateFileName = `telegram-offset-${safeNodeId}.json`;
-  const encodedToken = JSON.stringify(token);
-  const encodedStateFileName = JSON.stringify(stateFileName);
-
-  const content = [
-    "import fs from \"node:fs\";",
-    "import path from \"node:path\";",
-    "",
-    `const BOT_TOKEN = ${encodedToken};`,
-    `const STATE_FILE_NAME = ${encodedStateFileName};`,
-    "const workspacePath = process.env.KOVALSKY_TRIGGER_WORKSPACE_PATH || process.cwd();",
-    "const stateDir = path.join(workspacePath, \".kovalsky\", \"triggers\");",
-    "const statePath = path.join(stateDir, STATE_FILE_NAME);",
-    "",
-    "function readOffset() {",
-    "  try {",
-    "    const parsed = JSON.parse(fs.readFileSync(statePath, \"utf8\"));",
-    "    return Number.isInteger(parsed?.offset) && parsed.offset > 0 ? parsed.offset : null;",
-    "  } catch {",
-    "    return null;",
-    "  }",
-    "}",
-    "",
-    "function writeOffset(offset) {",
-    "  fs.mkdirSync(stateDir, { recursive: true });",
-    "  fs.writeFileSync(statePath, `${JSON.stringify({ offset })}\\n`, \"utf8\");",
-    "}",
-    "",
-    "function summarize(update) {",
-    "  const text = typeof update?.message?.text === \"string\" ? update.message.text.trim() : \"\";",
-    "  const compact = text.replace(/\\s+/g, \" \").slice(0, 220);",
-    "  if (!compact) {",
-    "    return null;",
-    "  }",
-    "  const from = update?.message?.from;",
-    "  const user = from?.username ? `@${from.username}` : (from?.id ? String(from.id) : \"unknown\");",
-    "  return `Telegram text from ${user}: ${compact}`;",
-    "}",
-    "",
-    "const previousOffset = readOffset();",
-    "const url = new URL(`https://api.telegram.org/bot${BOT_TOKEN}/getUpdates`);",
-    "url.searchParams.set(\"timeout\", \"0\");",
-    "url.searchParams.set(\"allowed_updates\", JSON.stringify([\"message\"]));",
-    "if (previousOffset && previousOffset > 0) {",
-    "  url.searchParams.set(\"offset\", String(previousOffset));",
-    "}",
-    "",
-    "const response = await fetch(url, {",
-    "  method: \"GET\",",
-    "  headers: { accept: \"application/json\" },",
-    "});",
-    "if (!response.ok) {",
-    "  console.log(JSON.stringify({ triggered: false, reason: `Telegram API HTTP ${response.status}` }));",
-    "  process.exit(0);",
-    "}",
-    "",
-    "const payload = await response.json();",
-    "if (!payload || payload.ok !== true || !Array.isArray(payload.result)) {",
-    "  console.log(JSON.stringify({ triggered: false, reason: \"Telegram API payload is invalid.\" }));",
-    "  process.exit(0);",
-    "}",
-    "",
-    "const updates = payload.result.filter((entry) => Number.isInteger(entry?.update_id));",
-    "if (updates.length === 0) {",
-    "  console.log(JSON.stringify({ triggered: false }));",
-    "  process.exit(0);",
-    "}",
-    "",
-    "const maxUpdateId = updates.reduce((max, item) => (item.update_id > max ? item.update_id : max), 0);",
-    "const nextOffset = maxUpdateId + 1;",
-    "const hadOffset = Boolean(previousOffset && previousOffset > 0);",
-    "writeOffset(nextOffset);",
-    "",
-    "if (!hadOffset) {",
-    "  console.log(JSON.stringify({ triggered: false }));",
-    "  process.exit(0);",
-    "}",
-    "",
-    "for (let index = updates.length - 1; index >= 0; index -= 1) {",
-    "  const reason = summarize(updates[index]);",
-    "  if (!reason) {",
-    "    continue;",
-    "  }",
-    "  console.log(JSON.stringify({ triggered: true, reason }));",
-    "  process.exit(0);",
-    "}",
-    "",
-    "console.log(JSON.stringify({ triggered: false }));",
-  ].join("\n");
-
-  return { fileName, content };
+  return unique.slice(0, remaining);
 }
 
 function buildGenerationPrompt(goal: string, messages: TriggerChatMessage[]): string {
@@ -365,10 +249,9 @@ function buildGenerationPrompt(goal: string, messages: TriggerChatMessage[]): st
     "Choose the best trigger approach.",
     "Prefer webhook when an external system can call HTTP.",
     "Otherwise choose script_poll and generate a Node.js 18+ script.",
-    "If user already provided broad event text (e.g. any message / any text), treat it as sufficient and do not ask repeated clarifications.",
     "For script_poll: no dependencies, use global fetch only, print exactly one JSON line.",
     "The JSON line must be either {\"triggered\":true,\"reason\":\"...\"} or {\"triggered\":false}.",
-    "If information is insufficient, ask up to 3 short clarifying questions.",
+    "If information is insufficient, ask up to 5 short clarifying questions.",
     "Output strict JSON only with one of these shapes:",
     "{\"status\":\"needs_input\",\"questions\":[\"...\"]}",
     "{\"status\":\"ready\",\"summary\":\"...\",\"config\":{\"type\":\"webhook\",\"token\":\"...\",\"secret\":\"...\",\"method\":\"POST\",\"coolDownSeconds\":60}}",
@@ -487,31 +370,27 @@ export class TriggerService {
 
     const parsed = extractJsonObject(raw);
     if (!parsed) {
-      const heuristicReady = this.tryBuildHeuristicTriggerResponse(input, workspacePath, raw);
-      if (heuristicReady) {
-        return heuristicReady;
-      }
       return {
         status: "needs_input",
-        questions: [
-          "I could not derive a valid trigger yet. What exact event should start the workflow?",
-        ],
+        questions: buildNeedsInputQuestions(
+          input.messages ?? [],
+          ["I could not derive a valid trigger yet. Describe the exact trigger source and event condition."],
+          "Describe the exact trigger source and event condition.",
+        ),
         raw,
       };
     }
 
     const status = asString(parsed.status).trim().toLowerCase();
     if (status === "needs_input") {
-      const heuristicReady = this.tryBuildHeuristicTriggerResponse(input, workspacePath, raw);
-      if (heuristicReady) {
-        return heuristicReady;
-      }
-      const questions = ensureArrayOfStrings(parsed.questions).slice(0, 3);
+      const questions = ensureArrayOfStrings(parsed.questions).slice(0, MAX_TRIGGER_QUESTIONS);
       return {
         status: "needs_input",
-        questions: questions.length > 0
-          ? questions
-          : ["What exact event should I monitor for this trigger?"],
+        questions: buildNeedsInputQuestions(
+          input.messages ?? [],
+          questions,
+          "Describe the exact event to monitor for this trigger.",
+        ),
         raw,
       };
     }
@@ -547,13 +426,13 @@ export class TriggerService {
     const scriptFileName = sanitizeFileName(asString(configRaw.scriptFileName), `${input.nodeId}-trigger`);
     const scriptContent = asString(configRaw.scriptContent).trim();
     if (!scriptContent) {
-      const heuristicReady = this.tryBuildHeuristicTriggerResponse(input, workspacePath, raw);
-      if (heuristicReady) {
-        return heuristicReady;
-      }
       return {
         status: "needs_input",
-        questions: ["I need more detail for polling. What exact endpoint, page, or condition should the script check?"],
+        questions: buildNeedsInputQuestions(
+          input.messages ?? [],
+          ["I need more detail for polling. Describe the exact endpoint, page, or condition the script should check."],
+          "Describe the exact endpoint, page, or condition the polling script should check.",
+        ),
         raw,
       };
     }
@@ -574,36 +453,6 @@ export class TriggerService {
       scriptPath,
       raw,
     };
-  }
-
-  private tryBuildHeuristicTriggerResponse(
-    input: TriggerGenerationRequest,
-    workspacePath: string,
-    raw: string,
-  ): TriggerGenerationResponse | null {
-    const messages = input.messages ?? [];
-    const telegramPolling = shouldUseTelegramAnyTextPolling(input.goal, messages);
-    if (telegramPolling) {
-      const script = buildTelegramAnyTextPollingScript(telegramPolling.token, input.nodeId);
-      const scriptPath = this.writeScriptFile(workspacePath, input.nodeId, script.fileName, script.content);
-      return {
-        status: "ready",
-        summary: "Telegram polling trigger generated: workflow starts on each new text message sent to the bot.",
-        config: {
-          type: "script_poll",
-          intervalSeconds: 20,
-          timeoutSeconds: 15,
-          coolDownSeconds: 5,
-          scriptFileName: script.fileName,
-          scriptContent: script.content,
-          scriptPath,
-        },
-        scriptPath,
-        raw: raw.trim() ? `${raw.trim()}\n[heuristic_fallback=telegram_any_text_polling]` : "[heuristic_fallback=telegram_any_text_polling]",
-      };
-    }
-
-    return null;
   }
 
   async activateTrigger(input: {
