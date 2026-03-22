@@ -1,5 +1,4 @@
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { spawn, spawnSync } from "node:child_process";
 import type pino from "pino";
@@ -39,7 +38,7 @@ export interface CodexLoginStartResult {
 
 const DEFAULT_PACKAGE_BY_TOOL: Record<KnownTool, string> = {
   codex: "@openai/codex",
-  openclaw: "openclaw",
+  openclaw: "openclaw@2026.2.15",
 };
 
 const PACKAGE_ENV_BY_TOOL: Record<KnownTool, string> = {
@@ -117,21 +116,8 @@ export class ToolchainService {
       try {
         return await this.installTool(tool);
       } catch (error) {
-        const systemOpenClaw = this.resolveSystemOpenClawCommand();
-        if (systemOpenClaw) {
-          this.logger.warn({ err: error }, "falling back to system openclaw for trigger agent");
-          return systemOpenClaw;
-        }
+        this.logger.warn({ err: error }, "failed to resolve local openclaw for trigger agent");
         throw error;
-      }
-    }
-
-    // For interactive OpenClaw agent runs, prefer user's system OpenClaw first.
-    // This keeps CLI/browser-gateway protocol aligned when a local gateway is already running.
-    if (agentId === "openclaw" && tool === "openclaw") {
-      const systemOpenClaw = this.resolveSystemOpenClawCommand();
-      if (systemOpenClaw) {
-        return systemOpenClaw;
       }
     }
 
@@ -146,7 +132,7 @@ export class ToolchainService {
       return bundled;
     }
 
-    if (this.commandExists(trimmedCommand)) {
+    if (tool !== "openclaw" && this.commandExists(trimmedCommand)) {
       return trimmedCommand;
     }
 
@@ -588,23 +574,7 @@ export class ToolchainService {
       };
     }
 
-    if (tool === "openclaw") {
-      const systemOpenClaw = this.resolveSystemOpenClawCommand();
-      if (!systemOpenClaw) {
-        // continue with local fallbacks below
-      } else {
-        return {
-          tool,
-          command: systemOpenClaw,
-          packageName,
-          status: "ready",
-          source: "system",
-          error: null,
-        };
-      }
-    }
-
-    if (this.commandExists(command)) {
+    if (tool !== "openclaw" && this.commandExists(command)) {
       return {
         tool,
         command,
@@ -638,7 +608,7 @@ export class ToolchainService {
       };
     }
 
-    if (this.commandExists(command)) {
+    if (tool !== "openclaw" && this.commandExists(command)) {
       return {
         tool,
         command,
@@ -685,54 +655,27 @@ export class ToolchainService {
     return process.env[PACKAGE_ENV_BY_TOOL[tool]]?.trim() || DEFAULT_PACKAGE_BY_TOOL[tool];
   }
 
-  private resolveSystemOpenClawCommand(): string | null {
-    const overridePath = (process.env.KOVALSKY_OPENCLAW_SYSTEM_PATH ?? "").trim();
-    if (overridePath && this.commandExists(overridePath)) {
-      return overridePath;
+  private resolveInstallSpecifier(packageName: string): string {
+    const trimmed = packageName.trim();
+    if (!trimmed) {
+      return packageName;
     }
 
-    if (this.commandExists("openclaw")) {
-      return "openclaw";
+    if (
+      trimmed.includes("://")
+      || trimmed.startsWith("file:")
+      || trimmed.startsWith("link:")
+      || trimmed.startsWith("workspace:")
+    ) {
+      return trimmed;
     }
 
-    const executable = process.platform === "win32" ? "openclaw.cmd" : "openclaw";
-    const candidates = new Set<string>();
-
-    if (process.platform === "win32") {
-      candidates.add(path.join(process.env.ProgramFiles ?? "C:\\Program Files", "nodejs", executable));
-      candidates.add(path.join(process.env.APPDATA ?? "", "npm", executable));
-    } else {
-      candidates.add(path.join("/opt/homebrew/bin", executable));
-      candidates.add(path.join("/usr/local/bin", executable));
-      candidates.add(path.join("/usr/bin", executable));
-      candidates.add(path.join(os.homedir(), ".local", "bin", executable));
-      candidates.add(path.join(os.homedir(), "bin", executable));
-      candidates.add(path.join(os.homedir(), ".volta", "bin", executable));
+    const lastAt = trimmed.lastIndexOf("@");
+    if (lastAt > 0) {
+      return trimmed;
     }
 
-    const nvmRoot = path.join(os.homedir(), ".nvm", "versions", "node");
-    try {
-      if (fs.existsSync(nvmRoot)) {
-        const nodeVersions = fs
-          .readdirSync(nvmRoot, { withFileTypes: true })
-          .filter((entry) => entry.isDirectory())
-          .map((entry) => entry.name)
-          .sort((left, right) => right.localeCompare(left, undefined, { numeric: true, sensitivity: "base" }));
-        for (const versionDir of nodeVersions) {
-          candidates.add(path.join(nvmRoot, versionDir, "bin", executable));
-        }
-      }
-    } catch {
-      // ignore nvm directory errors
-    }
-
-    for (const candidate of candidates) {
-      if (candidate && this.commandExists(candidate)) {
-        return candidate;
-      }
-    }
-
-    return null;
+    return `${trimmed}@latest`;
   }
 
   private extractCodexDeviceAuth(raw: string): CodexLoginStartResult | null {
@@ -790,10 +733,11 @@ export class ToolchainService {
     const installPromise = (async () => {
       ensureDir(this.toolsRootDir);
       const packageName = this.resolvePackageName(tool);
+      const installSpecifier = this.resolveInstallSpecifier(packageName);
       const installInvocation = this.resolveInstallInvocation();
       this.runtimeState.set(tool, { state: "installing", error: null });
       this.logger.info(
-        { tool, packageName, installCommand: installInvocation.command, argsPrefix: installInvocation.argsPrefix },
+        { tool, packageName: installSpecifier, installCommand: installInvocation.command, argsPrefix: installInvocation.argsPrefix },
         "tool not found; installing local CLI runtime",
       );
       let stdout = "";
@@ -809,7 +753,7 @@ export class ToolchainService {
             this.toolsRootDir,
             "--silent",
             "--save-prod",
-            `${packageName}@latest`,
+            installSpecifier,
           ],
           {
             stdio: ["ignore", "pipe", "pipe"],
