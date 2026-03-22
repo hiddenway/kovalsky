@@ -277,6 +277,40 @@ function extractQuestionCandidatesFromRaw(raw: string): string[] {
   return questions;
 }
 
+function extractFatalGenerationError(raw: string): string | null {
+  const cleaned = raw.replace(/\u001b\[[0-9;]*m/g, "").trim();
+  if (!cleaned) {
+    return null;
+  }
+
+  const failoverMatch = cleaned.match(/FailoverError:\s*([^\n]+)/i);
+  if (failoverMatch?.[1]) {
+    return failoverMatch[1].trim();
+  }
+
+  const oauthRefreshMatch = cleaned.match(/OAuth token refresh failed[^\n]*/i);
+  if (oauthRefreshMatch?.[0]) {
+    return oauthRefreshMatch[0].trim();
+  }
+
+  const refreshTokenMatch = cleaned.match(/refresh_token_reused|invalid_request_error/i);
+  if (refreshTokenMatch) {
+    return "OpenAI Codex OAuth session expired or invalid. Re-authenticate and try again.";
+  }
+
+  const apiKeyMatch = cleaned.match(/No API key found for provider|OPENAI_API_KEY/i);
+  if (apiKeyMatch) {
+    return "Provider credentials are missing. Configure API key or OAuth for the selected model provider.";
+  }
+
+  const unsupportedModelMatch = cleaned.match(/model is not supported|Unknown model/i);
+  if (unsupportedModelMatch?.[0]) {
+    return unsupportedModelMatch[0].trim();
+  }
+
+  return null;
+}
+
 function normalizeQuestionKey(input: string): string {
   return input
     .toLowerCase()
@@ -462,6 +496,11 @@ export class TriggerService {
       },
       timeoutMs: 120_000,
     });
+
+    const fatalError = extractFatalGenerationError(raw);
+    if (fatalError) {
+      throw new Error(`Trigger generation failed: ${fatalError}`);
+    }
 
     const parsed = extractJsonObject(raw);
     if (!parsed) {
