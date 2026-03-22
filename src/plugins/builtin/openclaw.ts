@@ -289,9 +289,34 @@ function shouldRequireBrowserChecks(ctx: StepExecutionContext): boolean {
     "визуально проверь",
     "ui-проверка",
     "ui проверка",
+    "open site",
+    "open website",
+    "open webpage",
+    "open page",
+    "open url",
+    "visit site",
+    "visit website",
+    "visit page",
+    "navigate to",
+    "открой сайт",
+    "открыть сайт",
+    "открой страницу",
+    "открыть страницу",
+    "открой ссылку",
+    "открыть ссылку",
+    "перейди на сайт",
+    "перейти на сайт",
+    "зайди на сайт",
+    "зайти на сайт",
   ];
 
-  return browserKeywords.some((keyword) => text.includes(keyword));
+  if (browserKeywords.some((keyword) => text.includes(keyword))) {
+    return true;
+  }
+
+  const hasOpenVerb = /(open|visit|navigate|browse|открой|открыть|перейди|перейти|зайди|зайти)/i.test(text);
+  const hasWebTarget = /(site|website|webpage|page|url|link|сайт|страниц|ссылк|браузер)/i.test(text);
+  return hasOpenVerb && hasWebTarget;
 }
 
 function requiresWorkspaceRelativeProjectPath(ctx: StepExecutionContext): boolean {
