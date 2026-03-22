@@ -1,0 +1,92 @@
+{
+  "agent:main:main": {
+    "sessionId": "test-trigger-gen",
+    "updatedAt": 1774187288347,
+    "skillsSnapshot": {
+      "prompt": "\n\nThe following skills provide specialized instructions for specific tasks.\nUse the read tool to load a skill's file when the task matches its description.\nWhen a skill file references a relative path, resolve it against the skill directory (parent of SKILL.md / dirname of the path) and use that absolute path in tool commands.\n\n<available_skills>\n  <skill>\n    <name>coding-agent</name>\n    <description>Run Codex CLI, Claude Code, OpenCode, or Pi Coding Agent via background process for programmatic control.</description>\n    <location>/Users/danilholodnyj/.nvm/versions/node/v24.10.0/lib/node_modules/openclaw/skills/coding-agent/SKILL.md</location>\n  </skill>\n  <skill>\n    <name>gog</name>\n    <description>Google Workspace CLI for Gmail, Calendar, Drive, Contacts, Sheets, and Docs.</description>\n    <location>/Users/danilholodnyj/.nvm/versions/node/v24.10.0/lib/node_modules/openclaw/skills/gog/SKILL.md</location>\n  </skill>\n  <skill>\n    <name>healthcheck</name>\n    <description>Host security hardening and risk-tolerance configuration for OpenClaw deployments. Use when a user asks for security audits, firewall/SSH/update hardening, risk posture, exposure review, OpenClaw cron scheduling for periodic checks, or version status checks on a machine running OpenClaw (laptop, workstation, Pi, VPS).</description>\n    <location>/Users/danilholodnyj/.nvm/versions/node/v24.10.0/lib/node_modules/openclaw/skills/healthcheck/SKILL.md</location>\n  </skill>\n  <skill>\n    <name>session-logs</name>\n    <description>Search and analyze your own session logs (older/parent conversations) using jq.</description>\n    <location>/Users/danilholodnyj/.nvm/versions/node/v24.10.0/lib/node_modules/openclaw/skills/session-logs/SKILL.md</location>\n  </skill>\n  <skill>\n    <name>skill-creator</name>\n    <description>Create or update AgentSkills. Use when designing, structuring, or packaging skills with scripts, references, and assets.</description>\n    <location>/Users/danilholodnyj/.nvm/versions/node/v24.10.0/lib/node_modules/openclaw/skills/skill-creator/SKILL.md</location>\n  </skill>\n  <skill>\n    <name>video-frames</name>\n    <description>Extract frames or short clips from videos using ffmpeg.</description>\n    <location>/Users/danilholodnyj/.nvm/versions/node/v24.10.0/lib/node_modules/openclaw/skills/video-frames/SKILL.md</location>\n  </skill>\n  <skill>\n    <name>weather</name>\n    <description>Get current weather and forecasts (no API key required).</description>\n    <location>/Users/danilholodnyj/.nvm/versions/node/v24.10.0/lib/node_modules/openclaw/skills/weather/SKILL.md</location>\n  </skill>\n</available_skills>",
+      "skills": [
+        {
+          "name": "coding-agent"
+        },
+        {
+          "name": "gog"
+        },
+        {
+          "name": "healthcheck"
+        },
+        {
+          "name": "session-logs"
+        },
+        {
+          "name": "skill-creator"
+        },
+        {
+          "name": "video-frames"
+        },
+        {
+          "name": "weather"
+        }
+      ],
+      "resolvedSkills": [
+        {
+          "name": "coding-agent",
+          "description": "Run Codex CLI, Claude Code, OpenCode, or Pi Coding Agent via background process for programmatic control.",
+          "filePath": "/Users/danilholodnyj/.nvm/versions/node/v24.10.0/lib/node_modules/openclaw/skills/coding-agent/SKILL.md",
+          "baseDir": "/Users/danilholodnyj/.nvm/versions/node/v24.10.0/lib/node_modules/openclaw/skills/coding-agent",
+          "source": "openclaw-bundled",
+          "disableModelInvocation": false
+        },
+        {
+          "name": "gog",
+          "description": "Google Workspace CLI for Gmail, Calendar, Drive, Contacts, Sheets, and Docs.",
+          "filePath": "/Users/danilholodnyj/.nvm/versions/node/v24.10.0/lib/node_modules/openclaw/skills/gog/SKILL.md",
+          "baseDir": "/Users/danilholodnyj/.nvm/versions/node/v24.10.0/lib/node_modules/openclaw/skills/gog",
+          "source": "openclaw-bundled",
+          "disableModelInvocation": false
+        },
+        {
+          "name": "healthcheck",
+          "description": "Host security hardening and risk-tolerance configuration for OpenClaw deployments. Use when a user asks for security audits, firewall/SSH/update hardening, risk posture, exposure review, OpenClaw cron scheduling for periodic checks, or version status checks on a machine running OpenClaw (laptop, workstation, Pi, VPS).",
+          "filePath": "/Users/danilholodnyj/.nvm/versions/node/v24.10.0/lib/node_modules/openclaw/skills/healthcheck/SKILL.md",
+          "baseDir": "/Users/danilholodnyj/.nvm/versions/node/v24.10.0/lib/node_modules/openclaw/skills/healthcheck",
+          "source": "openclaw-bundled",
+          "disableModelInvocation": false
+        },
+        {
+          "name": "session-logs",
+          "description": "Search and analyze your own session logs (older/parent conversations) using jq.",
+          "filePath": "/Users/danilholodnyj/.nvm/versions/node/v24.10.0/lib/node_modules/openclaw/skills/session-logs/SKILL.md",
+          "baseDir": "/Users/danilholodnyj/.nvm/versions/node/v24.10.0/lib/node_modules/openclaw/skills/session-logs",
+          "source": "openclaw-bundled",
+          "disableModelInvocation": false
+        },
+        {
+          "name": "skill-creator",
+          "description": "Create or update AgentSkills. Use when designing, structuring, or packaging skills with scripts, references, and assets.",
+          "filePath": "/Users/danilholodnyj/.nvm/versions/node/v24.10.0/lib/node_modules/openclaw/skills/skill-creator/SKILL.md",
+          "baseDir": "/Users/danilholodnyj/.nvm/versions/node/v24.10.0/lib/node_modules/openclaw/skills/skill-creator",
+          "source": "openclaw-bundled",
+          "disableModelInvocation": false
+        },
+        {
+          "name": "video-frames",
+          "description": "Extract frames or short clips from videos using ffmpeg.",
+          "filePath": "/Users/danilholodnyj/.nvm/versions/node/v24.10.0/lib/node_modules/openclaw/skills/video-frames/SKILL.md",
+          "baseDir": "/Users/danilholodnyj/.nvm/versions/node/v24.10.0/lib/node_modules/openclaw/skills/video-frames",
+          "source": "openclaw-bundled",
+          "disableModelInvocation": false
+        },
+        {
+          "name": "weather",
+          "description": "Get current weather and forecasts (no API key required).",
+          "filePath": "/Users/danilholodnyj/.nvm/versions/node/v24.10.0/lib/node_modules/openclaw/skills/weather/SKILL.md",
+          "baseDir": "/Users/danilholodnyj/.nvm/versions/node/v24.10.0/lib/node_modules/openclaw/skills/weather",
+          "source": "openclaw-bundled",
+          "disableModelInvocation": false
+        }
+      ],
+      "version": 0
+    },
+    "thinkingLevel": "minimal"
+  }
+}
