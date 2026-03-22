@@ -124,6 +124,12 @@ export class ToolchainService {
       }
     }
 
+    // For interactive OpenClaw agent runs, prefer user's system OpenClaw first.
+    // This keeps CLI/browser-gateway protocol aligned when a local gateway is already running.
+    if (agentId === "openclaw" && tool === "openclaw" && this.commandExists(trimmedCommand)) {
+      return trimmedCommand;
+    }
+
     const managed = this.getManagedBinaryPath(tool);
     if (managed) {
       this.ensureManagedNodeShim();
@@ -573,6 +579,17 @@ export class ToolchainService {
         packageName,
         status: "missing",
         source: "none",
+        error: null,
+      };
+    }
+
+    if (tool === "openclaw" && this.commandExists(command)) {
+      return {
+        tool,
+        command,
+        packageName,
+        status: "ready",
+        source: "system",
         error: null,
       };
     }
