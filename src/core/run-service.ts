@@ -1465,6 +1465,7 @@ export class RunService {
   }): void {
     try {
       fs.mkdirSync(input.stateDir, { recursive: true });
+      this.seedOpenClawStateFromNative(input.stateDir);
       const authPath = path.join(input.stateDir, "agents", "main", "agent", "auth-profiles.json");
       const configPath = path.join(input.stateDir, "openclaw.json");
       const isOpenAiApiKey = this.looksLikeOpenAIApiKey(input.token);
@@ -1495,14 +1496,28 @@ export class RunService {
           authStore.usageStats = {};
         }
 
-        const profileId = "openai-codex:gateway";
-        authStore.profiles[profileId] = {
-          type: "token",
-          provider: "openai-codex",
-          token: input.token,
-        };
-        authStore.lastGood["openai-codex"] = profileId;
-        this.writeJsonObject(authPath, authStore);
+        const hasCodexProfile = Object.entries(authStore.profiles).some(([profileId, profileValue]) => {
+          if (profileId.trim().toLowerCase().startsWith("openai-codex:")) {
+            return true;
+          }
+          return Boolean(
+            profileValue
+              && typeof profileValue === "object"
+              && !Array.isArray(profileValue)
+              && (profileValue as Record<string, unknown>).provider === "openai-codex",
+          );
+        });
+
+        if (!hasCodexProfile) {
+          const profileId = "openai-codex:gateway";
+          authStore.profiles[profileId] = {
+            type: "token",
+            provider: "openai-codex",
+            token: input.token,
+          };
+          authStore.lastGood["openai-codex"] = profileId;
+          this.writeJsonObject(authPath, authStore);
+        }
       }
 
       const configRaw = this.readJsonObject(configPath);
@@ -1535,6 +1550,49 @@ export class RunService {
     } catch (error) {
       this.logger.warn({ err: error }, "failed to bootstrap OpenClaw state");
     }
+  }
+
+  private seedOpenClawStateFromNative(targetStateDir: string): void {
+    const nativeStateDir = this.resolveNativeOpenClawStateDir();
+    if (!nativeStateDir) {
+      return;
+    }
+
+    const filesToCopy = [
+      ["agents/main/agent/auth-profiles.json", "agents/main/agent/auth-profiles.json"],
+      ["agents/main/agent/auth.json", "agents/main/agent/auth.json"],
+      ["identity/device.json", "identity/device.json"],
+      ["identity/device-auth.json", "identity/device-auth.json"],
+      ["devices/paired.json", "devices/paired.json"],
+      ["devices/pending.json", "devices/pending.json"],
+    ] as const;
+
+    for (const [sourceRelativePath, targetRelativePath] of filesToCopy) {
+      const sourcePath = path.join(nativeStateDir, sourceRelativePath);
+      const targetPath = path.join(targetStateDir, targetRelativePath);
+      if (!fs.existsSync(sourcePath) || fs.existsSync(targetPath)) {
+        continue;
+      }
+      try {
+        fs.mkdirSync(path.dirname(targetPath), { recursive: true });
+        fs.copyFileSync(sourcePath, targetPath);
+      } catch {
+        // Keep running even if native state is unavailable or unreadable.
+      }
+    }
+  }
+
+  private resolveNativeOpenClawStateDir(): string | null {
+    const explicit = (process.env.KOVALSKY_OPENCLAW_NATIVE_STATE_DIR ?? "").trim();
+    if (explicit && fs.existsSync(explicit)) {
+      return explicit;
+    }
+
+    const homeCandidate = path.join(os.homedir(), ".openclaw");
+    if (fs.existsSync(homeCandidate)) {
+      return homeCandidate;
+    }
+    return null;
   }
 
   private readJsonObject(filePath: string): Record<string, unknown> {
