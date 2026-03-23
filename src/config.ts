@@ -14,7 +14,6 @@ export interface GatewayConfig {
   pairingTokenPath: string;
   pluginsDir: string;
   allowedOrigins: string[];
-  agentRuntimeMode: "auto" | "system";
   disableAuth: boolean;
 }
 
@@ -29,8 +28,6 @@ export function loadConfig(): GatewayConfig {
   const pairingTokenPath = path.join(appDataDir, "pairing-token");
   const pluginsDir = process.env.KOVALSKY_PLUGINS_DIR ?? path.join(process.cwd(), "plugins");
   const allowedOriginsRaw = process.env.KOVALSKY_ALLOWED_ORIGINS ?? "http://localhost:3000,http://127.0.0.1:3000";
-  const runtimeModeRaw = (process.env.KOVALSKY_AGENT_RUNTIME_MODE ?? "auto").trim().toLowerCase();
-  const agentRuntimeMode = runtimeModeRaw === "system" ? "system" : "auto";
   const disableAuth = (process.env.KOVALSKY_DISABLE_AUTH ?? "true").trim().toLowerCase() !== "false";
 
   return {
@@ -46,7 +43,6 @@ export function loadConfig(): GatewayConfig {
     pairingTokenPath,
     pluginsDir,
     allowedOrigins: allowedOriginsRaw.split(",").map((item) => item.trim()).filter(Boolean),
-    agentRuntimeMode,
     disableAuth,
   };
 }

@@ -460,10 +460,6 @@ export function PipelinesPage(): React.JSX.Element {
       const status = await api.installRequiredAgents();
       setBootstrapStatus(status);
       setDidNeedBootstrap(true);
-      if (status.runtimeMode === "system" && !status.ready) {
-        setBootstrapBusy(false);
-        setBootstrapMessage("Gateway uses system runtime mode. Install codex/openclaw manually in PATH.");
-      }
     } catch (error) {
       setBootstrapBusy(false);
       setBootstrapMessage(error instanceof Error ? error.message : "Failed to start required agent install.");
@@ -778,7 +774,7 @@ export function PipelinesPage(): React.JSX.Element {
               ) : (
                 <Button
                   type="button"
-                  disabled={bootstrapBusy || bootstrapStatus?.running || bootstrapStatus?.runtimeMode === "system"}
+                  disabled={bootstrapBusy || bootstrapStatus?.running}
                   onClick={() => void startRequiredAgentInstall()}
                 >
                   {bootstrapStatus?.running ? "Installing..." : "Install Required Agents"}
@@ -786,9 +782,6 @@ export function PipelinesPage(): React.JSX.Element {
               )}
             </div>
 
-            {bootstrapStatus?.runtimeMode === "system" && !bootstrapStatus.ready ? (
-              <p className="mt-3 text-xs text-zinc-500">Runtime mode is system. Install `codex` and `openclaw` manually in PATH.</p>
-            ) : null}
             {bootstrapMessage ? <p className="mt-3 text-xs text-zinc-400">{bootstrapMessage}</p> : null}
           </div>
         </div>

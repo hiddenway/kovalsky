@@ -7,7 +7,7 @@ import { readCodexAuthState } from "../utils/codex-auth";
 
 type KnownTool = "codex" | "openclaw";
 type ToolState = "ready" | "missing" | "installing" | "error";
-type ToolSource = "system" | "local" | "none";
+type ToolSource = "local" | "none";
 
 export interface ToolStatus {
   tool: KnownTool;
@@ -19,7 +19,6 @@ export interface ToolStatus {
 }
 
 export interface ToolBootstrapStatus {
-  runtimeMode: "auto" | "system";
   running: boolean;
   ready: boolean;
   tools: ToolStatus[];
@@ -71,7 +70,6 @@ export class ToolchainService {
 
   constructor(
     appDataDir: string,
-    private readonly runtimeMode: "auto" | "system",
     private readonly logger: pino.Logger,
   ) {
     this.toolsRootDir = path.join(appDataDir, "tools", "pnpm");
@@ -90,13 +88,6 @@ export class ToolchainService {
         return trimmedCommand;
       }
       throw new Error(`Configured command "${trimmedCommand}" for ${tool} was not found.`);
-    }
-
-    if (this.runtimeMode === "system") {
-      if (this.commandExists(trimmedCommand)) {
-        return trimmedCommand;
-      }
-      throw new Error(`Required CLI "${command}" was not found in PATH (runtime mode: system).`);
     }
 
     // Trigger generation relies on OpenClaw report mode and is sensitive to
@@ -132,10 +123,6 @@ export class ToolchainService {
       return bundled;
     }
 
-    if (tool !== "openclaw" && this.commandExists(trimmedCommand)) {
-      return trimmedCommand;
-    }
-
     return this.installTool(tool);
   }
 
@@ -144,7 +131,6 @@ export class ToolchainService {
     const ready = tools.every((item) => item.status === "ready");
 
     return {
-      runtimeMode: this.runtimeMode,
       running: this.bootstrapPromise !== null,
       ready,
       tools,
@@ -152,9 +138,6 @@ export class ToolchainService {
   }
 
   startRequiredToolsInstall(): void {
-    if (this.runtimeMode === "system") {
-      return;
-    }
     if (this.bootstrapPromise) {
       return;
     }
@@ -553,38 +536,6 @@ export class ToolchainService {
     const packageName = this.resolvePackageName(tool);
     const stateFromInstall = this.runtimeState.get(tool);
 
-    if (this.runtimeMode === "system") {
-      if (this.commandExists(command)) {
-        return {
-          tool,
-          command,
-          packageName,
-          status: "ready",
-          source: "system",
-          error: null,
-        };
-      }
-      return {
-        tool,
-        command,
-        packageName,
-        status: "missing",
-        source: "none",
-        error: null,
-      };
-    }
-
-    if (tool !== "openclaw" && this.commandExists(command)) {
-      return {
-        tool,
-        command,
-        packageName,
-        status: "ready",
-        source: "system",
-        error: null,
-      };
-    }
-
     if (this.getManagedBinaryPath(tool)) {
       return {
         tool,
@@ -604,17 +555,6 @@ export class ToolchainService {
         packageName,
         status: "ready",
         source: "local",
-        error: null,
-      };
-    }
-
-    if (tool !== "openclaw" && this.commandExists(command)) {
-      return {
-        tool,
-        command,
-        packageName,
-        status: "ready",
-        source: "system",
         error: null,
       };
     }

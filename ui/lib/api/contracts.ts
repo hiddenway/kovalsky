@@ -78,12 +78,11 @@ export type ToolchainBootstrapTool = {
   packageName: string;
   command: string;
   status: "ready" | "missing" | "installing" | "error";
-  source: "system" | "local" | "none";
+  source: "local" | "none";
   error: string | null;
 };
 
 export type ToolchainBootstrapStatus = {
-  runtimeMode: "auto" | "system";
   running: boolean;
   ready: boolean;
   tools: ToolchainBootstrapTool[];

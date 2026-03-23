@@ -65,7 +65,7 @@ async function main(): Promise<void> {
   const artifactStore = new ArtifactStore(db, config.runsDir);
   const artifactResolver = new ArtifactResolver(db);
   const processManager = new ProcessManager();
-  const toolchainService = new ToolchainService(config.appDataDir, config.agentRuntimeMode, logger);
+  const toolchainService = new ToolchainService(config.appDataDir, logger);
   const agentHost = new AgentHost(
     pluginRegistry,
     artifactStore,
