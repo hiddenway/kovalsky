@@ -95,6 +95,8 @@ type TriggerStatusResponse = {
 const MAX_TRIGGER_QUESTIONS = 5;
 const TRIGGER_INPUT_CHANNEL = "KOVALSKY_TRIGGER_INPUT_JSON";
 const TRIGGER_INPUT_PREVIEW_MAX_CHARS = 8_000;
+const MAX_TRIGGER_PARSE_CHARS = 24_000;
+const MAX_TRIGGER_DEEP_PARSE_ATTEMPTS = 40;
 
 function isObjectRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -157,11 +159,14 @@ function normalizeHistoryEntries(value: unknown): TriggerHistoryEntry[] {
 }
 
 function extractJsonObject(raw: string): Record<string, unknown> | null {
-  const cleaned = raw
+  const normalized = raw
     .trim()
     .replace(/^```(?:json)?/i, "")
     .replace(/```$/i, "")
     .trim();
+  const cleaned = normalized.length > MAX_TRIGGER_PARSE_CHARS
+    ? normalized.slice(-MAX_TRIGGER_PARSE_CHARS)
+    : normalized;
 
   try {
     const parsed = JSON.parse(cleaned) as unknown;
@@ -183,7 +188,7 @@ function extractJsonObject(raw: string): Record<string, unknown> | null {
     // keep trying below
   }
 
-  const statusMatches = [...cleaned.matchAll(/"status"\s*:\s*"(?:needs_input|ready)"/g)];
+  const statusMatches = [...cleaned.matchAll(/"status"\s*:\s*"(?:needs_input|ready)"/g)].slice(-3);
   for (const match of statusMatches) {
     const markerIndex = match.index ?? -1;
     if (markerIndex < 0) {
@@ -191,7 +196,9 @@ function extractJsonObject(raw: string): Record<string, unknown> | null {
     }
 
     let startIndex = cleaned.lastIndexOf("{", markerIndex);
-    while (startIndex >= 0) {
+    let attempts = 0;
+    while (startIndex >= 0 && attempts < MAX_TRIGGER_DEEP_PARSE_ATTEMPTS) {
+      attempts += 1;
       const candidate = extractBalancedJsonObject(cleaned, startIndex);
       if (candidate) {
         try {
@@ -598,13 +605,11 @@ export class TriggerService {
       timeoutMs: 180_000,
     });
 
-    const parsed = extractJsonObject(raw);
-    if (!parsed) {
-      const fatalError = extractFatalGenerationError(raw);
-      if (fatalError) {
-        throw new Error(`Trigger generation failed: ${fatalError}`);
-      }
+    const fatalError = extractFatalGenerationError(raw);
+    if (fatalError) {
+      throw new Error(`Trigger generation failed: ${fatalError}`);
     }
+    const parsed = extractJsonObject(raw);
 
     if (!parsed) {
       return {
