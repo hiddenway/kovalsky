@@ -310,6 +310,25 @@ function extractFatalGenerationError(raw: string): string | null {
     return unsupportedModelMatch[0].trim();
   }
 
+  const hasWebFetch403 =
+    /web fetch:[^\n]*failed:[^\n]*\b403\b/i.test(cleaned)
+    || /security notice:[\s\S]*external_untrusted_content/i.test(cleaned)
+    || /just a moment\.\.\./i.test(cleaned)
+    || /cloudflare|attention required|access denied/i.test(cleaned);
+  const hasTimeout =
+    /embedded run timeout/i.test(cleaned)
+    || /timed out \(possible rate limit\)/i.test(cleaned)
+    || /request timed out|operation timed out/i.test(cleaned);
+  if (hasWebFetch403 && hasTimeout) {
+    return "Source website blocked automated fetch (403/anti-bot) and trigger generation timed out. Use webhook/API source, narrower scope, or retry later.";
+  }
+  if (hasWebFetch403) {
+    return "Source website blocked automated fetch (403/anti-bot). Use webhook/API source or a scraping target that allows automated access.";
+  }
+  if (hasTimeout) {
+    return "Trigger generation timed out (possible rate limit or slow external source). Retry with narrower scope or try again later.";
+  }
+
   return null;
 }
 
