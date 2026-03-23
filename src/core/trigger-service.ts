@@ -399,6 +399,7 @@ function buildGenerationPrompt(goal: string, messages: TriggerChatMessage[]): st
     "Choose the best trigger approach.",
     "Prefer webhook when an external system can call HTTP.",
     "Otherwise choose script_poll and generate a Node.js 18+ script.",
+    "When source analysis requires viewing websites, prioritize browser-based inspection from OpenClaw full profile before plain web fetch.",
     "For script_poll: no dependencies, use global fetch only, print exactly one JSON line.",
     "The JSON line must be either {\"triggered\":true,\"reason\":\"...\"} or {\"triggered\":false}.",
     `Event payload delivery is built-in: downstream workflow agents receive ${TRIGGER_INPUT_CHANNEL} automatically.`,
@@ -550,6 +551,11 @@ export class TriggerService {
     fs.mkdirSync(stepDir, { recursive: true });
 
     const settings = isObjectRecord(input.settings) ? { ...input.settings } : {};
+    // Trigger generation should prefer browser-capable OpenClaw profile for site inspection.
+    settings.useProfile = true;
+    settings.profile = "full";
+    const configuredTimeoutSeconds = asNumber(settings.timeoutSeconds);
+    settings.timeoutSeconds = Math.max(120, Math.floor(configuredTimeoutSeconds ?? 120));
     settings.reportPromptTemplate = buildGenerationPrompt(input.goal, input.messages ?? []);
 
     const raw = await this.agentHost.runNodeReport({
@@ -589,7 +595,7 @@ export class TriggerService {
           })),
         },
       },
-      timeoutMs: 120_000,
+      timeoutMs: 180_000,
     });
 
     const parsed = extractJsonObject(raw);

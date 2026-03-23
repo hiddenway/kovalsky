@@ -819,6 +819,9 @@ export const openclawPlugin: AgentPlugin = {
       let selectedAgentId: string | null = null;
 
       if (ctx.reportMode) {
+        const reportTimeoutSeconds = typeof ctx.settings.timeoutSeconds === "number" && Number.isFinite(ctx.settings.timeoutSeconds)
+          ? Math.max(30, Math.min(180, Math.floor(ctx.settings.timeoutSeconds)))
+          : 90;
         const configuredAgent = typeof ctx.settings.agentId === "string" && ctx.settings.agentId.trim()
           ? ctx.settings.agentId.trim()
           : null;
@@ -835,7 +838,7 @@ export const openclawPlugin: AgentPlugin = {
           "--thinking",
           "minimal",
           "--timeout",
-          "90",
+          String(reportTimeoutSeconds),
           "--message",
           buildReportMessage(ctx),
         ];
