@@ -93,6 +93,8 @@ type TriggerStatusResponse = {
 };
 
 const MAX_TRIGGER_QUESTIONS = 5;
+const TRIGGER_INPUT_CHANNEL = "KOVALSKY_TRIGGER_INPUT_JSON";
+const TRIGGER_INPUT_PREVIEW_MAX_CHARS = 8_000;
 
 function isObjectRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -380,12 +382,86 @@ function buildGenerationPrompt(goal: string, messages: TriggerChatMessage[]): st
     "Otherwise choose script_poll and generate a Node.js 18+ script.",
     "For script_poll: no dependencies, use global fetch only, print exactly one JSON line.",
     "The JSON line must be either {\"triggered\":true,\"reason\":\"...\"} or {\"triggered\":false}.",
+    `Event payload delivery is built-in: downstream workflow agents receive ${TRIGGER_INPUT_CHANNEL} automatically.`,
+    "Never ask where to map payload fields inside workflow variables.",
     "If information is insufficient, ask up to 5 short clarifying questions.",
     "Output strict JSON only with one of these shapes:",
     "{\"status\":\"needs_input\",\"questions\":[\"...\"]}",
     "{\"status\":\"ready\",\"summary\":\"...\",\"config\":{\"type\":\"webhook\",\"token\":\"...\",\"secret\":\"...\",\"method\":\"POST\",\"coolDownSeconds\":60}}",
     "{\"status\":\"ready\",\"summary\":\"...\",\"config\":{\"type\":\"script_poll\",\"intervalSeconds\":60,\"timeoutSeconds\":30,\"coolDownSeconds\":60,\"scriptFileName\":\"check-trigger.mjs\",\"scriptContent\":\"...\"}}",
   ].join("\n");
+}
+
+function collectDownstreamNodeIds(graph: PipelineGraph, sourceNodeId: string): Set<string> {
+  const outgoing = new Map<string, string[]>();
+  for (const edge of graph.edges) {
+    const current = outgoing.get(edge.source) ?? [];
+    current.push(edge.target);
+    outgoing.set(edge.source, current);
+  }
+
+  const visited = new Set<string>();
+  const stack = [...(outgoing.get(sourceNodeId) ?? [])];
+  while (stack.length > 0) {
+    const nodeId = stack.pop();
+    if (!nodeId || visited.has(nodeId)) {
+      continue;
+    }
+    visited.add(nodeId);
+    for (const next of outgoing.get(nodeId) ?? []) {
+      if (!visited.has(next)) {
+        stack.push(next);
+      }
+    }
+  }
+  return visited;
+}
+
+function stringifyTriggerMeta(meta: Record<string, unknown>): string {
+  try {
+    const compact = JSON.stringify(meta);
+    if (!compact) {
+      return "{}";
+    }
+    if (compact.length <= TRIGGER_INPUT_PREVIEW_MAX_CHARS) {
+      return JSON.stringify(meta, null, 2);
+    }
+    const previewLength = Math.max(128, TRIGGER_INPUT_PREVIEW_MAX_CHARS - 256);
+    return JSON.stringify(
+      {
+        truncated: true,
+        originalLength: compact.length,
+        preview: compact.slice(0, previewLength),
+      },
+      null,
+      2,
+    );
+  } catch {
+    return JSON.stringify({ serializationError: true }, null, 2);
+  }
+}
+
+function buildTriggerInputBlock(meta: Record<string, unknown>): string {
+  return [
+    "Trigger runtime input:",
+    `Channel: ${TRIGGER_INPUT_CHANNEL}`,
+    "This payload came from the event that started the current workflow run.",
+    `${TRIGGER_INPUT_CHANNEL}:`,
+    stringifyTriggerMeta(meta),
+    "Use this payload as authoritative trigger data for this run.",
+  ].join("\n");
+}
+
+function appendGoalSection(goal: string | undefined, section: string): string {
+  const base = (goal ?? "").trim();
+  const block = section.trim();
+  if (!base) {
+    return block;
+  }
+  if (!block) {
+    return base;
+  }
+  return `${base}\n\n${block}`;
 }
 
 export class TriggerService {
@@ -878,12 +954,26 @@ export class TriggerService {
     }
 
     const graph = JSON.parse(pipeline.graph_json) as PipelineGraph;
+    const downstreamNodeIds = collectDownstreamNodeIds(graph, watcher.nodeId);
+    const triggerInputBlock = buildTriggerInputBlock(meta);
+    const graphWithTriggerInput: PipelineGraph = {
+      ...graph,
+      nodes: graph.nodes.map((node) => {
+        if (!downstreamNodeIds.has(node.id)) {
+          return node;
+        }
+        return {
+          ...node,
+          goal: appendGoalSection(node.goal, triggerInputBlock),
+        };
+      }),
+    };
     const nextStages = graph.edges
       .filter((edge) => edge.source === watcher.nodeId)
       .map((edge) => graph.nodes.find((node) => node.id === edge.target))
       .filter((node): node is NonNullable<typeof node> => Boolean(node))
       .map((node) => `${node.agentId}:${node.id}`);
-    const started = await this.runService.startRun(watcher.pipelineId, graph, {
+    const started = await this.runService.startRun(watcher.pipelineId, graphWithTriggerInput, {
       workspacePath: watcher.workspacePath,
       clearNodeChatContext: false,
     });
