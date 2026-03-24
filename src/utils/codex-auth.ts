@@ -57,6 +57,13 @@ function pickExpiryMs(
   source: Record<string, unknown>,
   tokenCandidates: string[],
 ): number | null {
+  for (const token of tokenCandidates) {
+    const fromJwt = decodeJwtExpiryMs(token);
+    if (fromJwt) {
+      return fromJwt;
+    }
+  }
+
   const direct =
     normalizeExpiryMs(source.expires_at ?? null)
     ?? normalizeExpiryMs(source.expiresAt ?? null)
@@ -64,13 +71,6 @@ function pickExpiryMs(
     ?? normalizeExpiryMs(source.expiration ?? null);
   if (direct) {
     return direct;
-  }
-
-  for (const token of tokenCandidates) {
-    const fromJwt = decodeJwtExpiryMs(token);
-    if (fromJwt) {
-      return fromJwt;
-    }
   }
 
   return null;
@@ -108,8 +108,8 @@ export function readCodexAuthState(env: NodeJS.ProcessEnv = process.env): CodexA
     }
 
     const tokenCandidates = [
-      typeof tokens?.id_token === "string" ? tokens.id_token : "",
       typeof tokens?.access_token === "string" ? tokens.access_token : "",
+      typeof tokens?.id_token === "string" ? tokens.id_token : "",
       token,
     ].filter(Boolean);
     const expiryMs = (tokens ? pickExpiryMs(tokens, tokenCandidates) : null) ?? pickExpiryMs(parsed, tokenCandidates);
