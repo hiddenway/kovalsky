@@ -476,6 +476,12 @@ function collectDownstreamNodeIds(graph: PipelineGraph, sourceNodeId: string): S
   return visited;
 }
 
+function collectTriggeredExecutionNodeIds(graph: PipelineGraph, triggerNodeId: string): Set<string> {
+  const executionNodeIds = collectDownstreamNodeIds(graph, triggerNodeId);
+  executionNodeIds.add(triggerNodeId);
+  return executionNodeIds;
+}
+
 function stringifyTriggerMeta(meta: Record<string, unknown>): string {
   try {
     const compact = JSON.stringify(meta);
@@ -1174,23 +1180,34 @@ export class TriggerService {
     }
 
     const graph = JSON.parse(pipeline.graph_json) as PipelineGraph;
-    const downstreamNodeIds = collectDownstreamNodeIds(graph, watcher.nodeId);
+    const executionNodeIds = collectTriggeredExecutionNodeIds(graph, watcher.nodeId);
+    const downstreamNodeIds = new Set([...executionNodeIds].filter((nodeId) => nodeId !== watcher.nodeId));
+    if (downstreamNodeIds.size === 0) {
+      return { runId: null, reason: "Trigger fired but no downstream nodes are connected." };
+    }
     const triggerInputBlock = buildTriggerInputBlock(meta);
     const graphWithTriggerInput: PipelineGraph = {
       ...graph,
-      nodes: graph.nodes.map((node) => {
-        if (!downstreamNodeIds.has(node.id)) {
-          return node;
-        }
-        return {
-          ...node,
-          goal: appendGoalSection(node.goal, triggerInputBlock),
-        };
-      }),
+      nodes: graph.nodes
+        .filter((node) => executionNodeIds.has(node.id))
+        .map((node) => {
+          if (!downstreamNodeIds.has(node.id)) {
+            return node;
+          }
+          return {
+            ...node,
+            goal: appendGoalSection(node.goal, triggerInputBlock),
+          };
+        }),
+      edges: graph.edges.filter((edge) => executionNodeIds.has(edge.source) && executionNodeIds.has(edge.target)),
     };
-    const nextStages = graph.edges
+    const nextStageNodeIds = graphWithTriggerInput.edges
       .filter((edge) => edge.source === watcher.nodeId)
-      .map((edge) => graph.nodes.find((node) => node.id === edge.target))
+      .map((edge) => graphWithTriggerInput.nodes.find((node) => node.id === edge.target))
+      .filter((node): node is NonNullable<typeof node> => Boolean(node))
+      .map((node) => node.id);
+    const nextStages = nextStageNodeIds
+      .map((nodeId) => graphWithTriggerInput.nodes.find((node) => node.id === nodeId))
       .filter((node): node is NonNullable<typeof node> => Boolean(node))
       .map((node) => `${node.agentId}:${node.id}`);
     const started = await this.runService.startRun(watcher.pipelineId, graphWithTriggerInput, {
@@ -1234,6 +1251,20 @@ export class TriggerService {
         ...meta,
       },
     });
+    for (const nodeId of nextStageNodeIds) {
+      this.runService.appendNodeChat({
+        runId: started.runId,
+        nodeId,
+        role: "system",
+        phase: "pre_run",
+        content: `Triggered by ${watcher.nodeId}.\nMeta: ${JSON.stringify(meta)}`,
+        meta: {
+          source: "trigger_service",
+          triggerNodeId: watcher.nodeId,
+          ...meta,
+        },
+      });
+    }
 
     return { runId: started.runId, reason: null };
   }
