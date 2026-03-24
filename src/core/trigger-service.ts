@@ -40,6 +40,13 @@ type TriggerGeneratedConfig =
       scriptFileName: string;
       scriptContent: string;
       scriptPath?: string;
+    }
+  | {
+      type: "agent_poll";
+      intervalSeconds: number;
+      timeoutSeconds: number;
+      coolDownSeconds: number;
+      agentPrompt: string;
     };
 
 type TriggerHistoryEntry = {
@@ -67,7 +74,9 @@ type ActiveWatcher = {
   key: string;
   pipelineId: string;
   nodeId: string;
+  goal: string;
   workspacePath: string;
+  agentSettings: Record<string, unknown>;
   config: TriggerGeneratedConfig;
   status: "active";
   timer: NodeJS.Timeout | null;
@@ -97,6 +106,13 @@ const TRIGGER_INPUT_CHANNEL = "KOVALSKY_TRIGGER_INPUT_JSON";
 const TRIGGER_INPUT_PREVIEW_MAX_CHARS = 8_000;
 const MAX_TRIGGER_PARSE_CHARS = 24_000;
 const MAX_TRIGGER_DEEP_PARSE_ATTEMPTS = 40;
+
+type PollCheckResult = {
+  parsed: boolean;
+  triggered: boolean;
+  reason?: string;
+  payload?: Record<string, unknown>;
+};
 
 function isObjectRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -405,9 +421,10 @@ function buildGenerationPrompt(goal: string, messages: TriggerChatMessage[]): st
     "",
     "Choose the best trigger approach.",
     "Prefer webhook when an external system can call HTTP.",
-    "Otherwise choose script_poll and generate a Node.js 18+ script.",
+    "Otherwise choose script_poll (Node script) or agent_poll (OpenClaw check).",
     "When source analysis requires viewing websites, prioritize browser-based inspection from OpenClaw full profile before plain web fetch.",
     "For script_poll: no dependencies, use global fetch only, print exactly one JSON line.",
+    "For agent_poll: define concise check instructions in agentPrompt and still return trigger JSON format.",
     "The JSON line must be either {\"triggered\":true,\"reason\":\"...\"} or {\"triggered\":false}.",
     `Event payload delivery is built-in: downstream workflow agents receive ${TRIGGER_INPUT_CHANNEL} automatically.`,
     "Never ask where to map payload fields inside workflow variables.",
@@ -416,6 +433,21 @@ function buildGenerationPrompt(goal: string, messages: TriggerChatMessage[]): st
     "{\"status\":\"needs_input\",\"questions\":[\"...\"]}",
     "{\"status\":\"ready\",\"summary\":\"...\",\"config\":{\"type\":\"webhook\",\"token\":\"...\",\"secret\":\"...\",\"method\":\"POST\",\"coolDownSeconds\":60}}",
     "{\"status\":\"ready\",\"summary\":\"...\",\"config\":{\"type\":\"script_poll\",\"intervalSeconds\":60,\"timeoutSeconds\":30,\"coolDownSeconds\":60,\"scriptFileName\":\"check-trigger.mjs\",\"scriptContent\":\"...\"}}",
+    "{\"status\":\"ready\",\"summary\":\"...\",\"config\":{\"type\":\"agent_poll\",\"intervalSeconds\":60,\"timeoutSeconds\":90,\"coolDownSeconds\":60,\"agentPrompt\":\"...\"}}",
+  ].join("\n");
+}
+
+function buildAgentPollPrompt(goal: string, agentPrompt: string): string {
+  return [
+    "You evaluate whether a workflow trigger condition is met right now.",
+    `Workflow trigger goal: ${goal.trim() || "(empty)"}`,
+    `Trigger check instructions: ${agentPrompt.trim() || "(empty)"}`,
+    "Use browser-based inspection when needed.",
+    "Return strict JSON only in one line.",
+    "{\"triggered\":true,\"reason\":\"...\"}",
+    "or",
+    "{\"triggered\":false}",
+    "You may include extra JSON fields for downstream workflow payload.",
   ].join("\n");
 }
 
@@ -662,6 +694,37 @@ export class TriggerService {
       };
     }
 
+    if (type === "agent_poll") {
+      const intervalSeconds = Math.max(15, Math.floor(asNumber(configRaw.intervalSeconds) ?? 60));
+      const timeoutSeconds = Math.max(15, Math.floor(asNumber(configRaw.timeoutSeconds) ?? 90));
+      const coolDownSeconds = Math.max(5, Math.floor(asNumber(configRaw.coolDownSeconds) ?? 60));
+      const agentPrompt = asString(configRaw.agentPrompt).trim() || asString(configRaw.prompt).trim();
+      if (!agentPrompt) {
+        return {
+          status: "needs_input",
+          questions: buildNeedsInputQuestions(
+            input.messages ?? [],
+            ["Describe the exact condition the agent should check each polling cycle."],
+            "Describe the exact condition the agent should check each polling cycle.",
+          ),
+          raw,
+        };
+      }
+
+      return {
+        status: "ready",
+        summary,
+        config: {
+          type: "agent_poll",
+          intervalSeconds,
+          timeoutSeconds,
+          coolDownSeconds,
+          agentPrompt,
+        },
+        raw,
+      };
+    }
+
     const intervalSeconds = Math.max(15, Math.floor(asNumber(configRaw.intervalSeconds) ?? 60));
     const timeoutSeconds = Math.max(5, Math.floor(asNumber(configRaw.timeoutSeconds) ?? 30));
     const coolDownSeconds = Math.max(5, Math.floor(asNumber(configRaw.coolDownSeconds) ?? 60));
@@ -730,7 +793,9 @@ export class TriggerService {
       key: watcherKey,
       pipelineId: input.pipelineId,
       nodeId: input.nodeId,
+      goal: asString(node.goal),
       workspacePath,
+      agentSettings: isObjectRecord(node.settings) ? { ...node.settings } : {},
       config,
       status: "active",
       timer: null,
@@ -743,7 +808,7 @@ export class TriggerService {
       history: triggerState.history ?? [],
     };
 
-    if (config.type === "script_poll") {
+    if (config.type !== "webhook") {
       watcher.timer = setInterval(() => {
         void this.pollWatcher(watcher.key);
       }, config.intervalSeconds * 1000);
@@ -871,61 +936,89 @@ export class TriggerService {
 
   private async pollWatcher(key: string): Promise<void> {
     const watcher = this.watchers.get(key);
-    if (!watcher || watcher.config.type !== "script_poll" || watcher.runningCheck) {
+    if (!watcher || watcher.config.type === "webhook" || watcher.runningCheck) {
       return;
     }
 
     watcher.runningCheck = true;
     watcher.lastCheckAt = new Date().toISOString();
 
-    const stdoutLines: string[] = [];
-    const stderrLines: string[] = [];
-
     try {
-      const scriptPath = watcher.config.scriptPath
-        ?? this.writeScriptFile(
-          watcher.workspacePath,
-          watcher.nodeId,
-          watcher.config.scriptFileName,
-          watcher.config.scriptContent,
-        );
+      let checkResult: PollCheckResult;
+      let diagnostics: string | null = null;
 
-      watcher.config.scriptPath = scriptPath;
+      if (watcher.config.type === "script_poll") {
+        const stdoutLines: string[] = [];
+        const stderrLines: string[] = [];
+        const scriptPath = watcher.config.scriptPath
+          ?? this.writeScriptFile(
+            watcher.workspacePath,
+            watcher.nodeId,
+            watcher.config.scriptFileName,
+            watcher.config.scriptContent,
+          );
 
-      await this.processManager.run({
-        key: `trigger:${key}`,
-        command: scriptPath,
-        args: [],
-        cwd: watcher.workspacePath,
-        env: {
-          ...process.env,
-          KOVALSKY_TRIGGER_WORKSPACE_PATH: watcher.workspacePath,
-        },
-        timeoutMs: watcher.config.timeoutSeconds * 1000,
-        onStdout: (line) => {
-          stdoutLines.push(line.trim());
-        },
-        onStderr: (line) => {
-          stderrLines.push(line.trim());
-        },
-      });
+        watcher.config.scriptPath = scriptPath;
 
-      const payload = this.parsePollOutput(stdoutLines);
-      if (!payload.triggered) {
-        watcher.lastError = stderrLines.filter(Boolean).slice(-1)[0] ?? null;
-        if (watcher.lastError) {
-          this.persistTriggerState(watcher.pipelineId, watcher.nodeId, {
-            lastError: watcher.lastError,
-          });
+        await this.processManager.run({
+          key: `trigger:${key}`,
+          command: scriptPath,
+          args: [],
+          cwd: watcher.workspacePath,
+          env: {
+            ...process.env,
+            KOVALSKY_TRIGGER_WORKSPACE_PATH: watcher.workspacePath,
+          },
+          timeoutMs: watcher.config.timeoutSeconds * 1000,
+          onStdout: (line) => {
+            stdoutLines.push(line.trim());
+          },
+          onStderr: (line) => {
+            stderrLines.push(line.trim());
+          },
+        });
+
+        checkResult = this.parsePollOutput(stdoutLines);
+        diagnostics = stderrLines.filter(Boolean).slice(-1)[0] ?? null;
+      } else if (watcher.config.type === "agent_poll") {
+        const raw = await this.runAgentPollCheck(watcher);
+        checkResult = this.parsePollRaw(raw);
+        if (!checkResult.parsed) {
+          diagnostics = raw.trim()
+            ? `agent_poll output missing JSON decision: ${raw.trim().slice(-240)}`
+            : "agent_poll returned empty output.";
         }
+      } else {
+        return;
+      }
+
+      if (!checkResult.parsed) {
+        watcher.lastError = diagnostics;
+        this.persistTriggerState(watcher.pipelineId, watcher.nodeId, {
+          lastError: watcher.lastError,
+        });
+        return;
+      }
+
+      if (!checkResult.triggered) {
+        watcher.lastError = diagnostics;
+        this.persistTriggerState(watcher.pipelineId, watcher.nodeId, {
+          lastError: watcher.lastError,
+        });
         return;
       }
 
       const fire = await this.fireWatcherWorkflow(watcher, {
-        source: "script_poll",
-        payload,
+        source: watcher.config.type,
+        payload: checkResult.payload ?? {
+          triggered: true,
+          reason: checkResult.reason ?? `Trigger matched (${watcher.config.type}).`,
+        },
       });
       watcher.lastError = fire.reason ?? null;
+      this.persistTriggerState(watcher.pipelineId, watcher.nodeId, {
+        lastError: watcher.lastError,
+      });
     } catch (error) {
       watcher.lastError = error instanceof Error ? error.message : "Trigger poll failed.";
       this.logger.warn({ err: error, key }, "trigger poll failed");
@@ -937,32 +1030,129 @@ export class TriggerService {
     }
   }
 
-  private parsePollOutput(lines: string[]): { triggered: boolean; reason?: string } {
+  private parsePollOutput(lines: string[]): PollCheckResult {
     for (let index = lines.length - 1; index >= 0; index -= 1) {
       const line = lines[index].trim();
       if (!line) {
         continue;
       }
       if (line === "TRIGGER_FIRED") {
-        return { triggered: true, reason: "Trigger script emitted TRIGGER_FIRED." };
+        return {
+          parsed: true,
+          triggered: true,
+          reason: "Trigger script emitted TRIGGER_FIRED.",
+          payload: {
+            triggered: true,
+            reason: "Trigger script emitted TRIGGER_FIRED.",
+          },
+        };
       }
       try {
-        const parsed = JSON.parse(line) as { triggered?: unknown; reason?: unknown };
-        if (parsed.triggered === true) {
+        const parsed = JSON.parse(line) as unknown;
+        if (isObjectRecord(parsed) && parsed.triggered === true) {
           return {
+            parsed: true,
             triggered: true,
-            reason: typeof parsed.reason === "string" ? parsed.reason : "Trigger script reported a match.",
+            reason: typeof parsed.reason === "string" ? parsed.reason : "Trigger poll reported a match.",
+            payload: parsed,
           };
         }
-        if (parsed.triggered === false) {
-          return { triggered: false };
+        if (isObjectRecord(parsed) && parsed.triggered === false) {
+          return {
+            parsed: true,
+            triggered: false,
+            reason: typeof parsed.reason === "string" ? parsed.reason : undefined,
+            payload: parsed,
+          };
         }
       } catch {
         continue;
       }
     }
 
-    return { triggered: false };
+    return { parsed: false, triggered: false };
+  }
+
+  private parsePollRaw(raw: string): PollCheckResult {
+    const lines = raw
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean);
+    const fromLines = this.parsePollOutput(lines);
+    if (fromLines.parsed) {
+      return fromLines;
+    }
+
+    const parsed = extractJsonObject(raw);
+    if (!parsed || typeof parsed.triggered !== "boolean") {
+      return { parsed: false, triggered: false };
+    }
+
+    return {
+      parsed: true,
+      triggered: parsed.triggered,
+      reason: typeof parsed.reason === "string" ? parsed.reason : undefined,
+      payload: parsed,
+    };
+  }
+
+  private async runAgentPollCheck(watcher: ActiveWatcher): Promise<string> {
+    if (watcher.config.type !== "agent_poll") {
+      throw new Error("agent_poll config is required for agent poll checks.");
+    }
+
+    const env = await this.runService.buildAutomationEnv();
+    const stepRunId = `trigger-agent-poll-${randomUUID()}`;
+    const stepDir = path.join(this.runtimeDir, stepRunId);
+    const stepLogPath = path.join(stepDir, "logs.txt");
+    fs.mkdirSync(stepDir, { recursive: true });
+
+    const timeoutSeconds = Math.max(15, Math.floor(watcher.config.timeoutSeconds));
+    const baseSettings = isObjectRecord(watcher.agentSettings) ? { ...watcher.agentSettings } : {};
+    const profile = asString(baseSettings.profile).trim() || "full";
+    const settings = {
+      ...baseSettings,
+      useProfile: true,
+      profile,
+      timeoutSeconds,
+      reportPromptTemplate: buildAgentPollPrompt(watcher.goal, watcher.config.agentPrompt),
+    };
+
+    return this.agentHost.runNodeReport({
+      agentId: "trigger",
+      context: {
+        runId: `trigger-agent-poll-${watcher.pipelineId}`,
+        stepRunId,
+        nodeId: watcher.nodeId,
+        workspacePath: watcher.workspacePath,
+        stepDir,
+        stepLogPath,
+        goal: watcher.goal,
+        settings,
+        plannedNode: {
+          nodeId: watcher.nodeId,
+          agentId: "trigger",
+          goal: watcher.goal,
+          receivesFrom: [],
+          handoffTo: [],
+          notes: [],
+        },
+        resolvedInputs: {
+          inputsByType: {},
+          predecessorArtifacts: [],
+          handoffs: [],
+        },
+        env,
+        reportMode: true,
+        reportContext: {
+          reportKind: "chat_followup",
+          stepStatus: "success",
+          followupPrompt: "Check trigger condition and return JSON decision.",
+          chatHistory: [],
+        },
+      },
+      timeoutMs: timeoutSeconds * 1000,
+    });
   }
 
   private async fireWatcherWorkflow(
@@ -1109,6 +1299,20 @@ export class TriggerService {
         scriptFileName: sanitizeFileName(asString(value.scriptFileName), "trigger"),
         scriptContent,
         scriptPath: asString(value.scriptPath).trim() || undefined,
+      };
+    }
+
+    if (type === "agent_poll") {
+      const agentPrompt = asString(value.agentPrompt).trim() || asString(value.prompt).trim();
+      if (!agentPrompt) {
+        return undefined;
+      }
+      return {
+        type: "agent_poll",
+        intervalSeconds: Math.max(15, Math.floor(asNumber(value.intervalSeconds) ?? 60)),
+        timeoutSeconds: Math.max(15, Math.floor(asNumber(value.timeoutSeconds) ?? 90)),
+        coolDownSeconds: Math.max(5, Math.floor(asNumber(value.coolDownSeconds) ?? 60)),
+        agentPrompt,
       };
     }
 

@@ -141,6 +141,13 @@ export type TriggerGeneratedConfig =
       scriptFileName: string;
       scriptContent: string;
       scriptPath?: string;
+    }
+  | {
+      type: "agent_poll";
+      intervalSeconds: number;
+      timeoutSeconds: number;
+      coolDownSeconds: number;
+      agentPrompt: string;
     };
 
 export type TriggerGenerationResponse =
