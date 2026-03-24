@@ -7,6 +7,7 @@ import { DatabaseService } from "../db";
 import { ProcessManager } from "./process-manager";
 import { RunService } from "./run-service";
 import type { PipelineGraph } from "../types";
+import type { RunRecord } from "../types";
 import { resolveWorkspacePath } from "../utils/workspace-path";
 
 type TriggerChatRole = "user" | "assistant";
@@ -84,6 +85,7 @@ type ActiveWatcher = {
   lastCheckAt: string | null;
   lastFireAt: string | null;
   lastRunId: string | null;
+  waitingForRunId: string | null;
   lastError: string | null;
   webhookPath: string | null;
   history: TriggerHistoryEntry[];
@@ -872,6 +874,7 @@ export class TriggerService {
       lastCheckAt: null,
       lastFireAt: null,
       lastRunId: null,
+      waitingForRunId: null,
       lastError: null,
       webhookPath: config.type === "webhook" ? `/trigger-hooks/${config.token}` : null,
       history: triggerState.history ?? [],
@@ -1011,6 +1014,31 @@ export class TriggerService {
     const cycleStartedAt = Date.now();
 
     try {
+      const inFlightRun = this.getInFlightTriggerRun(watcher);
+      if (inFlightRun) {
+        if (watcher.waitingForRunId !== inFlightRun.id) {
+          watcher.waitingForRunId = inFlightRun.id;
+          this.pushWatcherHistory(
+            watcher,
+            `Workflow run ${inFlightRun.id} is still ${inFlightRun.status}. Trigger checks are paused until it finishes.`,
+          );
+          this.persistTriggerState(watcher.pipelineId, watcher.nodeId, {
+            history: watcher.history,
+          });
+        }
+        return;
+      }
+      if (watcher.waitingForRunId) {
+        this.pushWatcherHistory(
+          watcher,
+          `Workflow run ${watcher.waitingForRunId} finished. Trigger checks resumed.`,
+        );
+        watcher.waitingForRunId = null;
+        this.persistTriggerState(watcher.pipelineId, watcher.nodeId, {
+          history: watcher.history,
+        });
+      }
+
       let checkResult: PollCheckResult = { parsed: false, triggered: false };
       let diagnostics: string | null = null;
 
@@ -1317,6 +1345,15 @@ export class TriggerService {
     meta: Record<string, unknown>,
   ): Promise<{ runId: string | null; reason: string | null }> {
     const now = Date.now();
+    const inFlightRun = this.getInFlightTriggerRun(watcher);
+    if (inFlightRun) {
+      watcher.waitingForRunId = inFlightRun.id;
+      return {
+        runId: null,
+        reason: `Workflow run ${inFlightRun.id} is still ${inFlightRun.status}.`,
+      };
+    }
+
     const coolDownSeconds = watcher.config.coolDownSeconds;
     if (watcher.lastFireAt) {
       const elapsedMs = now - Date.parse(watcher.lastFireAt);
@@ -1368,6 +1405,7 @@ export class TriggerService {
 
     watcher.lastFireAt = new Date().toISOString();
     watcher.lastRunId = started.runId;
+    watcher.waitingForRunId = started.runId;
     watcher.lastError = null;
     const triggerReason = this.extractTriggerReason(meta);
     const historyLines = [
@@ -1526,6 +1564,21 @@ export class TriggerService {
 
   private toWatcherKey(pipelineId: string, nodeId: string): string {
     return `${pipelineId}:${nodeId}`;
+  }
+
+  private getInFlightTriggerRun(watcher: ActiveWatcher): RunRecord | null {
+    const runId = watcher.lastRunId?.trim();
+    if (!runId) {
+      return null;
+    }
+    const run = this.db.getRun(runId);
+    if (!run) {
+      return null;
+    }
+    if (run.status === "queued" || run.status === "running") {
+      return run;
+    }
+    return null;
   }
 
   private pushWatcherHistory(watcher: ActiveWatcher, content: string): void {
