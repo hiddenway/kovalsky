@@ -552,6 +552,46 @@ function isTransientAgentPollError(message: string): boolean {
   return normalized.includes("timed out") || isTransientAgentPollReason(normalized);
 }
 
+function looksLikeSuccessfulBrowserInspection(raw: string): boolean {
+  const normalized = raw.trim().toLowerCase();
+  if (!normalized) {
+    return false;
+  }
+
+  const hardNegativeSignals = [
+    "browser unavailable",
+    "gateway closed",
+    "gateway unavailable",
+    "service unavailable",
+    "eaddrinuse",
+    "timed out",
+    "timeout",
+    "no data",
+    "unable to open",
+    "could not open",
+    "failed",
+    "error",
+  ];
+  if (hardNegativeSignals.some((token) => normalized.includes(token))) {
+    return false;
+  }
+
+  const browserSignals = [
+    "tiktok",
+    "opened",
+    "open",
+    "video",
+    "author",
+    "caption",
+    "likes",
+    "comments",
+    "shares",
+    "visible",
+  ];
+  const score = browserSignals.reduce((sum, token) => sum + (normalized.includes(token) ? 1 : 0), 0);
+  return score >= 3;
+}
+
 export class TriggerService {
   private readonly watchers = new Map<string, ActiveWatcher>();
   private readonly webhookIndex = new Map<string, string>();
@@ -1041,6 +1081,28 @@ export class TriggerService {
 
         if (!checkResult.parsed && !diagnostics && lastRaw.trim()) {
           diagnostics = `agent_poll output missing JSON decision: ${lastRaw.trim().slice(-240)}`;
+        }
+        const reason = asString(checkResult.reason).trim().toLowerCase();
+        if (
+          checkResult.parsed
+          && !checkResult.triggered
+          && reason === "condition not met"
+          && looksLikeSuccessfulBrowserInspection(lastRaw)
+        ) {
+          checkResult = {
+            parsed: true,
+            triggered: true,
+            reason: "Heuristic override: browser inspection reported visible TikTok data.",
+            payload: {
+              triggered: true,
+              reason: "Heuristic override: browser inspection reported visible TikTok data.",
+              heuristic: true,
+            },
+          };
+          this.pushWatcherHistory(
+            watcher,
+            "Applied heuristic override: treating successful browser inspection as trigger match.",
+          );
         }
       } else {
         return;
