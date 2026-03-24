@@ -77,6 +77,15 @@ function readTriggerState(settings: Record<string, unknown>): TriggerState {
   return isObjectRecord(settings.trigger) ? settings.trigger as TriggerState : {};
 }
 
+function normalizeTriggerLifecycleStatus(
+  status: TriggerStatusResponse["status"],
+): NonNullable<TriggerState["lifecycleStatus"]> {
+  if (status === "draft" || status === "paused") {
+    return status;
+  }
+  return "active";
+}
+
 function sanitizeAssistantChatContent(raw: string): string {
   const lines = raw
     .split(/\r?\n/)
@@ -360,6 +369,18 @@ export function InspectorPanel({
         const status = await api.getTriggerStatus(pipelineId, selectedNode.id);
         if (!disposed) {
           setTriggerRuntimeStatus(status);
+          const settings = isObjectRecord(selectedNode.data.settings) ? selectedNode.data.settings : {};
+          const triggerState = readTriggerState(settings);
+          const runtimeLifecycleStatus = normalizeTriggerLifecycleStatus(status.status);
+          if (triggerState.lifecycleStatus !== runtimeLifecycleStatus) {
+            onSettingsChange({
+              ...settings,
+              trigger: {
+                ...triggerState,
+                lifecycleStatus: runtimeLifecycleStatus,
+              },
+            });
+          }
         }
         if (status.lastRunId?.trim()) {
           announceExternalRun(status.lastRunId.trim(), `trigger-run:${pipelineId}:${selectedNode.id}:${status.lastRunId.trim()}`);
@@ -389,7 +410,7 @@ export function InspectorPanel({
       disposed = true;
       window.clearInterval(timer);
     };
-  }, [pipelineId, selectedNode, announceExternalRun]);
+  }, [pipelineId, selectedNode, announceExternalRun, onSettingsChange]);
 
   if (selectedNode) {
     const definition = getAgentById(selectedNode.data.agentId);

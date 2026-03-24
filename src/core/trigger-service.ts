@@ -955,6 +955,17 @@ export class TriggerService {
   }): TriggerStatusResponse {
     const watcher = this.watchers.get(this.toWatcherKey(input.pipelineId, input.nodeId));
     if (watcher) {
+      const pipeline = this.db.getPipeline(input.pipelineId);
+      if (pipeline) {
+        const graph = JSON.parse(pipeline.graph_json) as PipelineGraph;
+        const node = graph.nodes.find((item) => item.id === input.nodeId);
+        const triggerState = this.readTriggerState(node?.settings);
+        if (triggerState.lifecycleStatus !== "active") {
+          this.persistTriggerState(input.pipelineId, input.nodeId, {
+            lifecycleStatus: "active",
+          });
+        }
+      }
       return this.buildStatusResponse(watcher);
     }
 
