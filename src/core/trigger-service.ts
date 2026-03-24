@@ -106,6 +106,7 @@ const TRIGGER_INPUT_CHANNEL = "KOVALSKY_TRIGGER_INPUT_JSON";
 const TRIGGER_INPUT_PREVIEW_MAX_CHARS = 8_000;
 const MAX_TRIGGER_PARSE_CHARS = 24_000;
 const MAX_TRIGGER_DEEP_PARSE_ATTEMPTS = 40;
+const AGENT_POLL_MIN_DELAY_MS = 8_000;
 
 type PollCheckResult = {
   parsed: boolean;
@@ -443,6 +444,8 @@ function buildAgentPollPrompt(goal: string, agentPrompt: string): string {
     `Workflow trigger goal: ${goal.trim() || "(empty)"}`,
     `Trigger check instructions: ${agentPrompt.trim() || "(empty)"}`,
     "Use browser-based inspection when needed.",
+    "For TikTok/social feed checks, treat condition as met when the page is open and at least one relevant visible item is present.",
+    "Do not require full metadata for every field; if any meaningful visible data is captured, return triggered=true.",
     "Return strict JSON only in one line.",
     "{\"triggered\":true,\"reason\":\"...\"}",
     "or",
@@ -537,7 +540,8 @@ function isTransientAgentPollReason(reason: string): boolean {
   return normalized.includes("gateway closed")
     || normalized.includes("gateway unavailable")
     || normalized.includes("browser unavailable")
-    || normalized.includes("browser tool unavailable");
+    || normalized.includes("browser tool unavailable")
+    || normalized.includes("eaddrinuse");
 }
 
 function isTransientAgentPollError(message: string): boolean {
@@ -1097,7 +1101,10 @@ export class TriggerService {
       if (stillActive && stillActive.config.type !== "webhook") {
         const intervalMs = Math.max(1_000, stillActive.config.intervalSeconds * 1000);
         const elapsedMs = Math.max(0, Date.now() - cycleStartedAt);
-        const nextDelayMs = Math.max(0, intervalMs - elapsedMs);
+        const rawNextDelayMs = Math.max(0, intervalMs - elapsedMs);
+        const nextDelayMs = stillActive.config.type === "agent_poll"
+          ? Math.max(AGENT_POLL_MIN_DELAY_MS, rawNextDelayMs)
+          : rawNextDelayMs;
         this.scheduleNextPoll(stillActive, nextDelayMs);
       }
     }
