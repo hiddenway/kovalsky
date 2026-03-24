@@ -11,6 +11,8 @@ type AgentNodeProps = {
   selected?: boolean;
 };
 
+type TriggerLifecycleStatus = "draft" | "paused" | "active" | "working";
+
 const STATUS_STYLES: Record<string, string> = {
   pending: "bg-zinc-800 text-zinc-300 border-zinc-700",
   running: "bg-amber-950 text-amber-300 border-amber-700/60",
@@ -29,11 +31,32 @@ const STATUS_LABELS: Record<string, string> = {
   canceled: "canceled",
 };
 
+const TRIGGER_MODE_STYLES: Record<TriggerLifecycleStatus, string> = {
+  draft: "bg-zinc-900 text-zinc-400 border-zinc-700",
+  paused: "bg-zinc-900 text-zinc-300 border-zinc-700",
+  active: "bg-cyan-950 text-cyan-300 border-cyan-700/60",
+  working: "bg-amber-950 text-amber-300 border-amber-700/60",
+};
+
+function isObjectRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function readTriggerLifecycleStatus(settings: Record<string, unknown> | undefined): TriggerLifecycleStatus {
+  const trigger = isObjectRecord(settings?.trigger) ? settings.trigger : null;
+  const raw = typeof trigger?.lifecycleStatus === "string" ? trigger.lifecycleStatus.trim().toLowerCase() : "";
+  if (raw === "active" || raw === "paused" || raw === "working") {
+    return raw;
+  }
+  return "draft";
+}
+
 function AgentNode({ data, selected = false }: AgentNodeProps): React.JSX.Element {
   const definition = getAgentById(data.agentId);
   const customName = data.customName?.trim() ?? "";
   const status = data.runtimeStatus ?? data.handoff?.status;
   const statusLabel = data.runtimeStatusLabel ?? (status ? (STATUS_LABELS[status] ?? status) : "");
+  const triggerMode = isTriggerAgent(data.agentId) ? readTriggerLifecycleStatus(data.settings) : null;
   const leftPosition = "left" as never;
   const rightPosition = "right" as never;
 
@@ -58,16 +81,28 @@ function AgentNode({ data, selected = false }: AgentNodeProps): React.JSX.Elemen
             </p>
           ) : null}
         </div>
-        {status ? (
-          <span
-            className={cn(
-              "rounded border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
-              STATUS_STYLES[status],
-            )}
-          >
-            {statusLabel}
-          </span>
-        ) : null}
+        <div className="flex flex-col items-end gap-1">
+          {status ? (
+            <span
+              className={cn(
+                "rounded border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
+                STATUS_STYLES[status],
+              )}
+            >
+              {statusLabel}
+            </span>
+          ) : null}
+          {triggerMode ? (
+            <span
+              className={cn(
+                "rounded border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
+                TRIGGER_MODE_STYLES[triggerMode],
+              )}
+            >
+              {`mode: ${triggerMode}`}
+            </span>
+          ) : null}
+        </div>
       </div>
 
       {!isTriggerAgent(data.agentId) ? (
