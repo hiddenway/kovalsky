@@ -616,10 +616,38 @@ function looksLikeBrowserInspectionCompletedDespiteTransientIssue(raw: string): 
   return score >= 4;
 }
 
+function hasMeaningfulAgentPollPayload(payload: unknown): boolean {
+  if (!isObjectRecord(payload)) {
+    return false;
+  }
+
+  for (const [key, value] of Object.entries(payload)) {
+    const normalizedKey = key.trim().toLowerCase();
+    if (normalizedKey === "triggered" || normalizedKey === "reason") {
+      continue;
+    }
+    if (typeof value === "string" && value.trim()) {
+      return true;
+    }
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return true;
+    }
+    if (Array.isArray(value) && value.length > 0) {
+      return true;
+    }
+    if (isObjectRecord(value) && Object.keys(value).length > 0) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 export class TriggerService {
   private readonly watchers = new Map<string, ActiveWatcher>();
   private readonly webhookIndex = new Map<string, string>();
   private readonly runtimeDir: string;
+  private agentPollLock: Promise<void> = Promise.resolve();
 
   constructor(
     private readonly db: DatabaseService,
@@ -1085,6 +1113,7 @@ export class TriggerService {
 
       let checkResult: PollCheckResult = { parsed: false, triggered: false };
       let diagnostics: string | null = null;
+      let agentPollRaw = "";
 
       if (watcher.config.type === "script_poll") {
         const stdoutLines: string[] = [];
@@ -1123,7 +1152,7 @@ export class TriggerService {
         let lastRaw = "";
         for (let attempt = 1; attempt <= 2; attempt += 1) {
           try {
-            const raw = await this.runAgentPollCheck(watcher);
+            const raw = await this.withAgentPollLock(() => this.runAgentPollCheck(watcher));
             lastRaw = raw;
             checkResult = this.parsePollRaw(raw);
             if (!checkResult.parsed) {
@@ -1154,6 +1183,7 @@ export class TriggerService {
         if (!checkResult.parsed && !diagnostics && lastRaw.trim()) {
           diagnostics = `agent_poll output missing JSON decision: ${lastRaw.trim().slice(-240)}`;
         }
+        agentPollRaw = lastRaw.trim();
         const reason = asString(checkResult.reason).trim().toLowerCase();
         if (
           checkResult.parsed
@@ -1161,6 +1191,7 @@ export class TriggerService {
           && (
             (reason === "condition not met" && looksLikeSuccessfulBrowserInspection(lastRaw))
             || (isTransientAgentPollReason(reason) && looksLikeBrowserInspectionCompletedDespiteTransientIssue(lastRaw))
+            || hasMeaningfulAgentPollPayload(checkResult.payload)
           )
         ) {
           checkResult = {
@@ -1168,13 +1199,14 @@ export class TriggerService {
             triggered: true,
             reason: isTransientAgentPollReason(reason)
               ? "Heuristic override: browser inspection completed despite transient browser error."
-              : "Heuristic override: browser inspection reported visible TikTok data.",
+              : "Heuristic override: browser inspection reported visible page data.",
             payload: {
               triggered: true,
               reason: isTransientAgentPollReason(reason)
                 ? "Heuristic override: browser inspection completed despite transient browser error."
-                : "Heuristic override: browser inspection reported visible TikTok data.",
+                : "Heuristic override: browser inspection reported visible page data.",
               heuristic: true,
+              rawReport: lastRaw.trim().slice(-4_000),
             },
           };
           this.pushWatcherHistory(
@@ -1184,6 +1216,14 @@ export class TriggerService {
         }
       } else {
         return;
+      }
+
+      if (watcher.config.type === "agent_poll" && checkResult.parsed && checkResult.triggered && agentPollRaw) {
+        const payload = isObjectRecord(checkResult.payload) ? { ...checkResult.payload } : {};
+        if (typeof payload.rawReport !== "string" || !payload.rawReport.trim()) {
+          payload.rawReport = agentPollRaw.slice(-4_000);
+        }
+        checkResult.payload = payload;
       }
 
       if (!checkResult.parsed) {
@@ -1631,6 +1671,20 @@ export class TriggerService {
     }
     this.watchers.delete(key);
     return existing;
+  }
+
+  private async withAgentPollLock<T>(task: () => Promise<T>): Promise<T> {
+    const previous = this.agentPollLock;
+    let release = () => {};
+    this.agentPollLock = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await previous;
+    try {
+      return await task();
+    } finally {
+      release();
+    }
   }
 
   private getInFlightTriggerRun(watcher: ActiveWatcher): RunRecord | null {
