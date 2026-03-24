@@ -815,10 +815,7 @@ export class TriggerService {
     };
 
     if (config.type !== "webhook") {
-      watcher.timer = setInterval(() => {
-        void this.pollWatcher(watcher.key);
-      }, config.intervalSeconds * 1000);
-      void this.pollWatcher(watcher.key);
+      this.scheduleNextPoll(watcher, 0);
     } else {
       this.webhookIndex.set(config.token, watcher.key);
     }
@@ -948,6 +945,7 @@ export class TriggerService {
 
     watcher.runningCheck = true;
     watcher.lastCheckAt = new Date().toISOString();
+    const cycleStartedAt = Date.now();
 
     try {
       let checkResult: PollCheckResult;
@@ -1033,7 +1031,28 @@ export class TriggerService {
       });
     } finally {
       watcher.runningCheck = false;
+      const stillActive = this.watchers.get(key);
+      if (stillActive && stillActive.config.type !== "webhook") {
+        const intervalMs = Math.max(1_000, stillActive.config.intervalSeconds * 1000);
+        const elapsedMs = Math.max(0, Date.now() - cycleStartedAt);
+        const nextDelayMs = Math.max(0, intervalMs - elapsedMs);
+        this.scheduleNextPoll(stillActive, nextDelayMs);
+      }
     }
+  }
+
+  private scheduleNextPoll(watcher: ActiveWatcher, delayMs: number): void {
+    if (watcher.config.type === "webhook") {
+      return;
+    }
+    if (watcher.timer) {
+      clearTimeout(watcher.timer);
+    }
+    const safeDelayMs = Math.max(0, Math.floor(delayMs));
+    watcher.timer = setTimeout(() => {
+      watcher.timer = null;
+      void this.pollWatcher(watcher.key);
+    }, safeDelayMs);
   }
 
   private parsePollOutput(lines: string[]): PollCheckResult {
