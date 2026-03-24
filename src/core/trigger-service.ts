@@ -1030,7 +1030,6 @@ export class TriggerService {
 
     watcher.runningCheck = true;
     watcher.lastCheckAt = new Date().toISOString();
-    const cycleStartedAt = Date.now();
 
     try {
       const inFlightRun = this.getInFlightTriggerRun(watcher);
@@ -1209,11 +1208,11 @@ export class TriggerService {
       const stillActive = this.watchers.get(key);
       if (stillActive && stillActive.config.type !== "webhook") {
         const intervalMs = Math.max(1_000, stillActive.config.intervalSeconds * 1000);
-        const elapsedMs = Math.max(0, Date.now() - cycleStartedAt);
-        const rawNextDelayMs = Math.max(0, intervalMs - elapsedMs);
+        // Fixed-delay scheduling: wait full interval after each finished check cycle.
+        // This prevents back-to-back restarts when a check duration is close to/over the interval.
         const nextDelayMs = stillActive.config.type === "agent_poll"
-          ? Math.max(AGENT_POLL_MIN_DELAY_MS, rawNextDelayMs)
-          : rawNextDelayMs;
+          ? Math.max(AGENT_POLL_MIN_DELAY_MS, intervalMs)
+          : intervalMs;
         this.scheduleNextPoll(stillActive, nextDelayMs);
       }
     }
