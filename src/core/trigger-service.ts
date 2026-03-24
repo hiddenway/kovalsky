@@ -529,6 +529,25 @@ function appendGoalSection(goal: string | undefined, section: string): string {
   return `${base}\n\n${block}`;
 }
 
+function isTransientAgentPollReason(reason: string): boolean {
+  const normalized = reason.trim().toLowerCase();
+  if (!normalized) {
+    return false;
+  }
+  return normalized.includes("gateway closed")
+    || normalized.includes("gateway unavailable")
+    || normalized.includes("browser unavailable")
+    || normalized.includes("browser tool unavailable");
+}
+
+function isTransientAgentPollError(message: string): boolean {
+  const normalized = message.trim().toLowerCase();
+  if (!normalized) {
+    return false;
+  }
+  return normalized.includes("timed out") || isTransientAgentPollReason(normalized);
+}
+
 export class TriggerService {
   private readonly watchers = new Map<string, ActiveWatcher>();
   private readonly webhookIndex = new Map<string, string>();
@@ -948,7 +967,7 @@ export class TriggerService {
     const cycleStartedAt = Date.now();
 
     try {
-      let checkResult: PollCheckResult;
+      let checkResult: PollCheckResult = { parsed: false, triggered: false };
       let diagnostics: string | null = null;
 
       if (watcher.config.type === "script_poll") {
@@ -985,12 +1004,39 @@ export class TriggerService {
         checkResult = this.parsePollOutput(stdoutLines);
         diagnostics = stderrLines.filter(Boolean).slice(-1)[0] ?? null;
       } else if (watcher.config.type === "agent_poll") {
-        const raw = await this.runAgentPollCheck(watcher);
-        checkResult = this.parsePollRaw(raw);
-        if (!checkResult.parsed) {
-          diagnostics = raw.trim()
-            ? `agent_poll output missing JSON decision: ${raw.trim().slice(-240)}`
-            : "agent_poll returned empty output.";
+        let lastRaw = "";
+        for (let attempt = 1; attempt <= 2; attempt += 1) {
+          try {
+            const raw = await this.runAgentPollCheck(watcher);
+            lastRaw = raw;
+            checkResult = this.parsePollRaw(raw);
+            if (!checkResult.parsed) {
+              diagnostics = raw.trim()
+                ? `agent_poll output missing JSON decision: ${raw.trim().slice(-240)}`
+                : "agent_poll returned empty output.";
+              break;
+            }
+
+            const reason = asString(checkResult.reason).trim();
+            if (!checkResult.triggered && attempt < 2 && isTransientAgentPollReason(reason)) {
+              this.pushWatcherHistory(watcher, `Transient browser issue (${reason}). Retrying check once.`);
+              await new Promise((resolve) => setTimeout(resolve, 1_500));
+              continue;
+            }
+            break;
+          } catch (error) {
+            const message = error instanceof Error ? error.message : "agent_poll check failed.";
+            if (attempt < 2 && isTransientAgentPollError(message)) {
+              this.pushWatcherHistory(watcher, `Transient check error (${message}). Retrying check once.`);
+              await new Promise((resolve) => setTimeout(resolve, 1_500));
+              continue;
+            }
+            throw error;
+          }
+        }
+
+        if (!checkResult.parsed && !diagnostics && lastRaw.trim()) {
+          diagnostics = `agent_poll output missing JSON decision: ${lastRaw.trim().slice(-240)}`;
         }
       } else {
         return;
@@ -1008,7 +1054,7 @@ export class TriggerService {
 
       if (!checkResult.triggered) {
         const notTriggeredReason = (checkResult.reason ?? "condition not met").trim();
-        watcher.lastError = diagnostics;
+        watcher.lastError = diagnostics ?? (isTransientAgentPollReason(notTriggeredReason) ? notTriggeredReason : null);
         this.pushWatcherHistory(
           watcher,
           watcher.lastError
