@@ -603,6 +603,7 @@ export function InspectorPanel({
     const triggerState = readTriggerState(settings);
     const triggerChat = Array.isArray(triggerState.chat) ? triggerState.chat : [];
     const effectiveTriggerStatus = triggerRuntimeStatus?.status ?? triggerState.lifecycleStatus ?? "draft";
+    const triggerIsRunning = effectiveTriggerStatus === "active" || effectiveTriggerStatus === "working";
     const triggerHistory = triggerRuntimeStatus?.history ?? triggerState.history ?? [];
     const triggerConversation = [
       ...triggerChat.map((message, index) => ({
@@ -633,7 +634,7 @@ export function InspectorPanel({
       status: TriggerStatusResponse,
     ): TriggerState => ({
       ...currentTriggerState,
-      lifecycleStatus: status.status,
+      lifecycleStatus: status.status === "working" ? "active" : status.status,
       webhookPath: status.webhookPath ?? currentTriggerState.webhookPath,
       scriptPath: status.scriptPath ?? currentTriggerState.scriptPath,
       lastCheckAt: status.lastCheckAt ?? currentTriggerState.lastCheckAt,
@@ -796,7 +797,7 @@ export function InspectorPanel({
                   <Button
                     type="button"
                     variant="secondary"
-                    disabled={isTriggerBusy || !triggerState.generated || effectiveTriggerStatus === "active" || !pipeline.workspacePath.trim()}
+                    disabled={isTriggerBusy || !triggerState.generated || triggerIsRunning || !pipeline.workspacePath.trim()}
                     onClick={() => {
                       if (!pipeline.workspacePath.trim()) {
                         updateTriggerState({
@@ -834,7 +835,7 @@ export function InspectorPanel({
                   <Button
                     type="button"
                     variant="secondary"
-                    disabled={isTriggerBusy || effectiveTriggerStatus !== "active"}
+                    disabled={isTriggerBusy || !triggerIsRunning}
                     onClick={() => {
                       setIsTriggerBusy(true);
                       void (async () => {

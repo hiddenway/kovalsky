@@ -166,7 +166,7 @@ export type TriggerGenerationResponse =
     };
 
 export type TriggerStatusResponse = {
-  status: "draft" | "paused" | "active";
+  status: "draft" | "paused" | "active" | "working";
   summary?: string;
   webhookPath?: string | null;
   scriptPath?: string | null;

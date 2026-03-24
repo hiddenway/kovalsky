@@ -90,7 +90,7 @@ type ActiveWatcher = {
 };
 
 type TriggerStatusResponse = {
-  status: "draft" | "paused" | "active";
+  status: "draft" | "paused" | "active" | "working";
   summary?: string;
   webhookPath?: string | null;
   scriptPath?: string | null;
@@ -1443,7 +1443,7 @@ export class TriggerService {
     }
 
     return {
-      status: watcher ? "active" : "paused",
+      status: watcher ? (watcher.runningCheck ? "working" : "active") : "paused",
       summary,
       webhookPath: source.webhookPath,
       scriptPath: source.config.type === "script_poll" ? source.config.scriptPath ?? null : null,
