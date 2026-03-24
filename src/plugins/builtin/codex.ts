@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import type { AgentPlugin } from "../types";
 import type { StepExecutionContext } from "../../types";
 
@@ -27,6 +28,19 @@ function uniqueStrings(values: string[]): string[] {
 
 function asString(input: unknown): string {
   return typeof input === "string" ? input : "";
+}
+
+function commandExists(command: string): boolean {
+  const normalized = command.trim();
+  if (!normalized) {
+    return false;
+  }
+
+  const probe = process.platform === "win32" ? "where" : "which";
+  const result = spawnSync(probe, [normalized], {
+    stdio: "ignore",
+  });
+  return result.status === 0;
 }
 
 function resolveModelOverride(input: unknown): string | null {
@@ -139,6 +153,11 @@ function buildCodexGoal(ctx: StepExecutionContext): string {
   if (requiresWorkspaceRelativeProjectPath(ctx)) {
     parts.push("Path policy: never create or use root-level /project or /projects.");
     parts.push("When task text references /project or /projects, interpret it as ./project inside current workspace.");
+  }
+  if (!commandExists("rg")) {
+    parts.push("Environment note: ripgrep (`rg`) is unavailable in this runtime.");
+    parts.push("Use `grep -R`, `find`, or `ls` instead of `rg` for search tasks.");
+    parts.push("If a command fails with `command not found: rg`, retry immediately with fallback commands.");
   }
 
   parts.push(

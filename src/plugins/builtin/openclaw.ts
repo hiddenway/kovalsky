@@ -1,4 +1,4 @@
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -16,6 +16,19 @@ function asStringArray(input: unknown): string[] {
 
 function asString(input: unknown): string {
   return typeof input === "string" ? input : "";
+}
+
+function commandExists(command: string): boolean {
+  const normalized = command.trim();
+  if (!normalized) {
+    return false;
+  }
+
+  const probe = process.platform === "win32" ? "where" : "which";
+  const result = spawnSync(probe, [normalized], {
+    stdio: "ignore",
+  });
+  return result.status === 0;
 }
 
 function formatChatHistory(ctx: StepExecutionContext): string {
@@ -346,6 +359,11 @@ function buildAgentMessage(ctx: StepExecutionContext): string {
   if (useWorkspaceRelativeProjectPath) {
     lines.push("Path policy: never create or use root-level /project or /projects.");
     lines.push("When task text references /project or /projects, interpret it as ./project inside current workspace.");
+  }
+  if (!commandExists("rg")) {
+    lines.push("Environment note: ripgrep (`rg`) is not installed in this runtime.");
+    lines.push("For search, use shell fallbacks (`grep -R`, `find`, `ls`) instead of `rg`.");
+    lines.push("Do not stop after `command not found: rg`; immediately retry with fallback commands.");
   }
   const urlCandidates = collectResolvedUrlCandidates(ctx);
   if (urlCandidates.length > 0) {
