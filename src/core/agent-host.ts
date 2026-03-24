@@ -245,8 +245,10 @@ export class AgentHost {
       /^\[tools\]/i,
       /^command exited with code/i,
       /^warning[:\s]/i,
-      /^\s*[\[\]{}(),:]+\s*$/,
     ];
+    if (params.agentId !== "trigger") {
+      ignored.push(/^\s*[\[\]{}(),:]+\s*$/);
+    }
     const filtered = [...stdoutLines, ...stderrLines].filter((line) => !ignored.some((pattern) => pattern.test(line)));
     if (filtered.length === 0) {
       return "";

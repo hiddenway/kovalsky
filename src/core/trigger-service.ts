@@ -997,17 +997,27 @@ export class TriggerService {
       }
 
       if (!checkResult.parsed) {
-        watcher.lastError = diagnostics;
+        watcher.lastError = diagnostics ?? "Trigger check did not return valid JSON decision.";
+        this.pushWatcherHistory(watcher, `Check failed: ${watcher.lastError}`);
         this.persistTriggerState(watcher.pipelineId, watcher.nodeId, {
           lastError: watcher.lastError,
+          history: watcher.history,
         });
         return;
       }
 
       if (!checkResult.triggered) {
+        const notTriggeredReason = (checkResult.reason ?? "condition not met").trim();
         watcher.lastError = diagnostics;
+        this.pushWatcherHistory(
+          watcher,
+          watcher.lastError
+            ? `Check: not triggered (${notTriggeredReason}). ${watcher.lastError}`
+            : `Check: not triggered (${notTriggeredReason}).`,
+        );
         this.persistTriggerState(watcher.pipelineId, watcher.nodeId, {
           lastError: watcher.lastError,
+          history: watcher.history,
         });
         return;
       }
@@ -1020,14 +1030,20 @@ export class TriggerService {
         },
       });
       watcher.lastError = fire.reason ?? null;
+      if (!fire.runId && fire.reason) {
+        this.pushWatcherHistory(watcher, `Trigger matched but run was skipped: ${fire.reason}`);
+      }
       this.persistTriggerState(watcher.pipelineId, watcher.nodeId, {
         lastError: watcher.lastError,
+        history: watcher.history,
       });
     } catch (error) {
       watcher.lastError = error instanceof Error ? error.message : "Trigger poll failed.";
       this.logger.warn({ err: error, key }, "trigger poll failed");
+      this.pushWatcherHistory(watcher, `Check error: ${watcher.lastError}`);
       this.persistTriggerState(watcher.pipelineId, watcher.nodeId, {
         lastError: watcher.lastError,
+        history: watcher.history,
       });
     } finally {
       watcher.runningCheck = false;
@@ -1394,6 +1410,23 @@ export class TriggerService {
 
   private toWatcherKey(pipelineId: string, nodeId: string): string {
     return `${pipelineId}:${nodeId}`;
+  }
+
+  private pushWatcherHistory(watcher: ActiveWatcher, content: string): void {
+    const normalized = content.trim();
+    if (!normalized) {
+      return;
+    }
+    const previous = watcher.history[watcher.history.length - 1];
+    if (previous?.content === normalized) {
+      return;
+    }
+    watcher.history.push({
+      id: randomUUID(),
+      at: new Date().toISOString(),
+      content: normalized,
+    });
+    watcher.history = watcher.history.slice(-20);
   }
 
   private appendTriggerHistory(pipelineId: string, nodeId: string, content: string): void {
