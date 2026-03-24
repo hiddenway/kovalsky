@@ -1463,10 +1463,6 @@ export class TriggerService {
     if (!normalized) {
       return;
     }
-    const previous = watcher.history[watcher.history.length - 1];
-    if (previous?.content === normalized) {
-      return;
-    }
     watcher.history.push({
       id: randomUUID(),
       at: new Date().toISOString(),
