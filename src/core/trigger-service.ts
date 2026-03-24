@@ -1381,7 +1381,7 @@ export class TriggerService {
     const stepLogPath = path.join(stepDir, "logs.txt");
     fs.mkdirSync(stepDir, { recursive: true });
 
-    const timeoutSeconds = Math.max(15, Math.floor(watcher.config.timeoutSeconds));
+    const timeoutSeconds = Math.max(120, Math.floor(watcher.config.timeoutSeconds));
     const baseSettings = isObjectRecord(watcher.agentSettings) ? { ...watcher.agentSettings } : {};
     const profile = asString(baseSettings.profile).trim() || "full";
     const settings = {
