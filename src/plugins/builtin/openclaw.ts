@@ -807,6 +807,7 @@ export const openclawPlugin: AgentPlugin = {
         goalFlag: { type: "string" },
         reportPromptTemplate: { type: "string" },
         persistBackgroundProcesses: { type: "boolean" },
+        useIsolatedState: { type: "boolean" },
       },
     },
     permissions: {
@@ -820,7 +821,14 @@ export const openclawPlugin: AgentPlugin = {
       const command = typeof ctx.settings.command === "string" ? ctx.settings.command : "openclaw";
       ensureWorkspaceMemoryScaffold(ctx.workspacePath);
       const rootArgs: string[] = [];
-      const statePrep = prepareIsolatedStateDir(ctx);
+      const useIsolatedState = ctx.settings.useIsolatedState !== false;
+      const sharedStateDir = (ctx.env.OPENCLAW_STATE_DIR ?? "").trim();
+      const statePrep = useIsolatedState
+        ? prepareIsolatedStateDir(ctx)
+        : {
+            stateDir: sharedStateDir,
+            isolated: false,
+          };
       const isolatedStateDir = statePrep.stateDir;
       const useProfile = ctx.settings.useProfile === true;
       const profile = useProfile && typeof ctx.settings.profile === "string" && ctx.settings.profile.trim()

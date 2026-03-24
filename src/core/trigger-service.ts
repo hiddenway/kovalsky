@@ -1201,6 +1201,7 @@ export class TriggerService {
       ...baseSettings,
       useProfile: true,
       profile,
+      useIsolatedState: false,
       timeoutSeconds,
       reportPromptTemplate: buildAgentPollPrompt(watcher.goal, watcher.config.agentPrompt),
     };
