@@ -561,18 +561,9 @@ function looksLikeSuccessfulBrowserInspection(raw: string): boolean {
   }
 
   const hardNegativeSignals = [
-    "browser unavailable",
-    "gateway closed",
-    "gateway unavailable",
-    "service unavailable",
-    "eaddrinuse",
-    "timed out",
-    "timeout",
     "no data",
     "unable to open",
     "could not open",
-    "failed",
-    "error",
   ];
   if (hardNegativeSignals.some((token) => normalized.includes(token))) {
     return false;
@@ -592,6 +583,37 @@ function looksLikeSuccessfulBrowserInspection(raw: string): boolean {
   ];
   const score = browserSignals.reduce((sum, token) => sum + (normalized.includes(token) ? 1 : 0), 0);
   return score >= 3;
+}
+
+function looksLikeBrowserInspectionCompletedDespiteTransientIssue(raw: string): boolean {
+  const normalized = raw.trim().toLowerCase();
+  if (!normalized) {
+    return false;
+  }
+
+  const hasTransientSignal = isTransientAgentPollReason(normalized)
+    || normalized.includes("browser control service unavailable")
+    || normalized.includes("unable to inspect");
+  if (!hasTransientSignal) {
+    return false;
+  }
+
+  const positiveSignals = [
+    "tiktok",
+    "opened",
+    "open",
+    "navigate",
+    "video",
+    "visible",
+    "caption",
+    "likes",
+    "comments",
+    "shares",
+    "close tab",
+    "closed tab",
+  ];
+  const score = positiveSignals.reduce((sum, token) => sum + (normalized.includes(token) ? 1 : 0), 0);
+  return score >= 4;
 }
 
 export class TriggerService {
@@ -836,7 +858,7 @@ export class TriggerService {
     nodeId: string;
   }): Promise<TriggerStatusResponse> {
     const watcherKey = this.toWatcherKey(input.pipelineId, input.nodeId);
-    await this.pauseTrigger(input);
+    this.stopWatcher(watcherKey);
 
     const pipeline = this.db.getPipeline(input.pipelineId);
     if (!pipeline) {
@@ -906,15 +928,8 @@ export class TriggerService {
     nodeId: string;
   }): Promise<TriggerStatusResponse> {
     const key = this.toWatcherKey(input.pipelineId, input.nodeId);
-    const existing = this.watchers.get(key);
+    const existing = this.stopWatcher(key);
     if (existing) {
-      if (existing.timer) {
-        clearInterval(existing.timer);
-      }
-      if (existing.config.type === "webhook") {
-        this.webhookIndex.delete(existing.config.token);
-      }
-      this.watchers.delete(key);
       this.appendTriggerHistory(input.pipelineId, input.nodeId, "Trigger paused.");
       this.persistTriggerState(input.pipelineId, input.nodeId, {
         lifecycleStatus: "paused",
@@ -1143,16 +1158,22 @@ export class TriggerService {
         if (
           checkResult.parsed
           && !checkResult.triggered
-          && reason === "condition not met"
-          && looksLikeSuccessfulBrowserInspection(lastRaw)
+          && (
+            (reason === "condition not met" && looksLikeSuccessfulBrowserInspection(lastRaw))
+            || (isTransientAgentPollReason(reason) && looksLikeBrowserInspectionCompletedDespiteTransientIssue(lastRaw))
+          )
         ) {
           checkResult = {
             parsed: true,
             triggered: true,
-            reason: "Heuristic override: browser inspection reported visible TikTok data.",
+            reason: isTransientAgentPollReason(reason)
+              ? "Heuristic override: browser inspection completed despite transient browser error."
+              : "Heuristic override: browser inspection reported visible TikTok data.",
             payload: {
               triggered: true,
-              reason: "Heuristic override: browser inspection reported visible TikTok data.",
+              reason: isTransientAgentPollReason(reason)
+                ? "Heuristic override: browser inspection completed despite transient browser error."
+                : "Heuristic override: browser inspection reported visible TikTok data.",
               heuristic: true,
             },
           };
@@ -1593,6 +1614,23 @@ export class TriggerService {
 
   private toWatcherKey(pipelineId: string, nodeId: string): string {
     return `${pipelineId}:${nodeId}`;
+  }
+
+  private stopWatcher(key: string): ActiveWatcher | null {
+    const existing = this.watchers.get(key);
+    if (!existing) {
+      return null;
+    }
+
+    if (existing.timer) {
+      clearTimeout(existing.timer);
+      existing.timer = null;
+    }
+    if (existing.config.type === "webhook") {
+      this.webhookIndex.delete(existing.config.token);
+    }
+    this.watchers.delete(key);
+    return existing;
   }
 
   private getInFlightTriggerRun(watcher: ActiveWatcher): RunRecord | null {
