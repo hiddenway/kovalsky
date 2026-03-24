@@ -928,8 +928,17 @@ export class TriggerService {
     }
     const graph = JSON.parse(pipeline.graph_json) as PipelineGraph;
     const node = graph.nodes.find((item) => item.id === input.nodeId);
+    if (!node || node.agentId !== "trigger") {
+      return { status: "draft" };
+    }
     const triggerState = this.readTriggerState(node?.settings);
     const status = triggerState.generated ? "paused" : "draft";
+    if (status === "paused") {
+      this.appendTriggerHistory(input.pipelineId, input.nodeId, "Trigger paused.");
+    }
+    this.persistTriggerState(input.pipelineId, input.nodeId, {
+      lifecycleStatus: status,
+    });
     return {
       status,
       summary: triggerState.summary,
@@ -955,9 +964,19 @@ export class TriggerService {
     }
     const graph = JSON.parse(pipeline.graph_json) as PipelineGraph;
     const node = graph.nodes.find((item) => item.id === input.nodeId);
+    if (!node || node.agentId !== "trigger") {
+      return { status: "draft" };
+    }
     const triggerState = this.readTriggerState(node?.settings);
+    const status = triggerState.generated ? (triggerState.lifecycleStatus === "draft" ? "paused" : triggerState.lifecycleStatus) : "draft";
+    if (status === "active" && !watcher) {
+      // Self-heal stale persisted state when runtime watcher is not alive.
+      this.persistTriggerState(input.pipelineId, input.nodeId, {
+        lifecycleStatus: "paused",
+      });
+    }
     return {
-      status: triggerState.generated ? "paused" : "draft",
+      status: status === "active" ? "paused" : status,
       summary: triggerState.summary,
       webhookPath: triggerState.generated?.type === "webhook" ? `/trigger-hooks/${triggerState.generated.token}` : null,
       scriptPath: triggerState.generated?.type === "script_poll" ? triggerState.generated.scriptPath ?? null : null,
