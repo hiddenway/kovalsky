@@ -612,15 +612,29 @@ type PreparedOpenClawState = {
   isolated: boolean;
 };
 
+const TRANSIENT_BROWSER_STATE_FILES = new Set([
+  "lock",
+  "singletonlock",
+  "singletonsocket",
+  "singletoncookie",
+  "devtoolsactiveport",
+  "chrome_debug.log",
+]);
+
 function shouldSkipStatePath(relativePath: string): boolean {
-  const normalized = relativePath.replace(/\\/g, "/");
+  const normalized = relativePath.replace(/\\/g, "/").trim();
   if (!normalized) {
     return false;
   }
-  if (normalized === "sessions" || normalized.startsWith("sessions/")) {
+  const lowered = normalized.toLowerCase();
+  if (lowered === "sessions" || lowered.startsWith("sessions/")) {
     return true;
   }
-  if (normalized.endsWith(".lock")) {
+  if (lowered.endsWith(".lock")) {
+    return true;
+  }
+  const baseName = lowered.split("/").pop() ?? lowered;
+  if (TRANSIENT_BROWSER_STATE_FILES.has(baseName)) {
     return true;
   }
   return false;
