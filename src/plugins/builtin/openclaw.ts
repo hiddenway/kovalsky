@@ -675,6 +675,9 @@ function applyWorkspaceOverrideToState(input: {
   workspacePath: string;
   agentId: string | null;
   model: string | null;
+  gatewayPort: number | null;
+  gatewayBind: string | null;
+  browserDefaultProfile: string | null;
 }): void {
   const stateDir = input.stateDir.trim();
   const workspacePath = input.workspacePath.trim();
@@ -730,6 +733,37 @@ function applyWorkspaceOverrideToState(input: {
   }
 
   config.agents = agents;
+  if (input.gatewayPort && Number.isFinite(input.gatewayPort) && input.gatewayPort > 0) {
+    const gateway = isObjectRecord(config.gateway) ? { ...config.gateway } : {};
+    gateway.port = Math.max(1, Math.floor(input.gatewayPort));
+    const normalizedBind = (input.gatewayBind ?? "").trim().toLowerCase();
+    if (normalizedBind === "loopback" || normalizedBind === "lan" || normalizedBind === "tailnet" || normalizedBind === "auto") {
+      gateway.bind = normalizedBind;
+    }
+    config.gateway = gateway;
+  }
+
+  const browserDefaultProfile = (input.browserDefaultProfile ?? "").trim();
+  if (browserDefaultProfile) {
+    const browser = isObjectRecord(config.browser) ? { ...config.browser } : {};
+    browser.defaultProfile = browserDefaultProfile;
+    if (browserDefaultProfile.toLowerCase() === "openclaw") {
+      if ("cdpUrl" in browser) {
+        delete browser.cdpUrl;
+      }
+      if (isObjectRecord(browser.profiles)) {
+        const profiles = { ...browser.profiles };
+        const chromeProfile = isObjectRecord(profiles.chrome) ? { ...profiles.chrome } : null;
+        if (chromeProfile && "cdpUrl" in chromeProfile) {
+          delete chromeProfile.cdpUrl;
+          profiles.chrome = chromeProfile;
+        }
+        browser.profiles = profiles;
+      }
+    }
+    config.browser = browser;
+  }
+
   writeJsonObject(configPath, config);
 }
 
@@ -808,6 +842,9 @@ export const openclawPlugin: AgentPlugin = {
         reportPromptTemplate: { type: "string" },
         persistBackgroundProcesses: { type: "boolean" },
         useIsolatedState: { type: "boolean" },
+        gatewayPort: { type: "number" },
+        gatewayBind: { type: "string", enum: ["loopback", "lan", "tailnet", "auto"] },
+        browserDefaultProfile: { type: "string" },
       },
     },
     permissions: {
@@ -921,6 +958,13 @@ export const openclawPlugin: AgentPlugin = {
             workspacePath: ctx.workspacePath,
             agentId: selectedAgentId,
             model: modelOverride,
+            gatewayPort: typeof ctx.settings.gatewayPort === "number" && Number.isFinite(ctx.settings.gatewayPort)
+              ? Math.floor(ctx.settings.gatewayPort)
+              : null,
+            gatewayBind: typeof ctx.settings.gatewayBind === "string" ? ctx.settings.gatewayBind.trim() : null,
+            browserDefaultProfile: typeof ctx.settings.browserDefaultProfile === "string"
+              ? ctx.settings.browserDefaultProfile.trim()
+              : null,
           });
         } catch {
           // keep running with copied state if override fails

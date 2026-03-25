@@ -1417,6 +1417,9 @@ export class TriggerService {
       // Trigger checks should run in isolated OpenClaw state to avoid
       // browser-control loopback port contention (EADDRINUSE) between runs.
       useIsolatedState: true,
+      gatewayPort: gatewayPort ?? undefined,
+      gatewayBind: "loopback",
+      browserDefaultProfile: "openclaw",
       timeoutSeconds,
       reportPromptTemplate: buildAgentPollPrompt(watcher.goal, watcher.config.agentPrompt),
     };
