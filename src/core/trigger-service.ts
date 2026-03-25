@@ -621,21 +621,38 @@ function hasMeaningfulAgentPollPayload(payload: unknown): boolean {
     return false;
   }
 
+  const positiveKeyPattern = /(video|videos|item|items|post|posts|entry|entries|result|results|data|title|titles|channel|channels|view|views|comment|comments|caption|captions|url|urls|text|author|authors)/i;
+  const technicalOrErrorKeyPattern = /(error|errors|exception|warning|code|status|diagnostic|debug|raw|rawreport|message)/i;
+  const negativeValuePattern = /(error|unavailable|timeout|timed out|failed|unable|cannot|exception|gateway closed|eaddrinuse)/i;
+
   for (const [key, value] of Object.entries(payload)) {
     const normalizedKey = key.trim().toLowerCase();
     if (normalizedKey === "triggered" || normalizedKey === "reason") {
       continue;
     }
+    if (technicalOrErrorKeyPattern.test(normalizedKey)) {
+      continue;
+    }
+
+    const keyLooksLikeBusinessData = positiveKeyPattern.test(normalizedKey);
+
     if (typeof value === "string" && value.trim()) {
+      const normalizedValue = value.trim().toLowerCase();
+      if (negativeValuePattern.test(normalizedValue)) {
+        continue;
+      }
+      if (keyLooksLikeBusinessData || normalizedValue.length >= 24) {
+        return true;
+      }
+      continue;
+    }
+    if (typeof value === "number" && Number.isFinite(value) && keyLooksLikeBusinessData) {
       return true;
     }
-    if (typeof value === "number" && Number.isFinite(value)) {
+    if (Array.isArray(value) && value.length > 0 && keyLooksLikeBusinessData) {
       return true;
     }
-    if (Array.isArray(value) && value.length > 0) {
-      return true;
-    }
-    if (isObjectRecord(value) && Object.keys(value).length > 0) {
+    if (isObjectRecord(value) && Object.keys(value).length > 0 && keyLooksLikeBusinessData) {
       return true;
     }
   }
