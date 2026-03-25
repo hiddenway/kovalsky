@@ -106,7 +106,7 @@ type TriggerStatusResponse = {
 const MAX_TRIGGER_QUESTIONS = 5;
 const TRIGGER_INPUT_CHANNEL = "KOVALSKY_TRIGGER_INPUT_JSON";
 const TRIGGER_INPUT_PREVIEW_MAX_CHARS = 8_000;
-const MAX_TRIGGER_PARSE_CHARS = 24_000;
+const MAX_TRIGGER_PARSE_CHARS = 120_000;
 const MAX_TRIGGER_DEEP_PARSE_ATTEMPTS = 40;
 const AGENT_POLL_MIN_DELAY_MS = 8_000;
 
@@ -1456,6 +1456,10 @@ export class TriggerService {
       if (nested) {
         return nested;
       }
+      const fromRaw = this.extractDecisionFromRawText(raw);
+      if (fromRaw) {
+        return fromRaw;
+      }
       const inferredReason = inferNotTriggeredReasonFromText(raw);
       if (inferredReason) {
         return {
@@ -1477,6 +1481,42 @@ export class TriggerService {
       reason: extractReasonFromPollPayload(parsed),
       payload: parsed,
     };
+  }
+
+  private extractDecisionFromRawText(raw: string): PollCheckResult | null {
+    const normalized = raw.trim();
+    if (!normalized) {
+      return null;
+    }
+    const cleaned = normalized.length > MAX_TRIGGER_PARSE_CHARS
+      ? normalized.slice(-MAX_TRIGGER_PARSE_CHARS)
+      : normalized;
+    const decisionMarkers = [...cleaned.matchAll(/"triggered"\s*:\s*(?:true|false)/gi)];
+    for (let markerIdx = decisionMarkers.length - 1; markerIdx >= 0; markerIdx -= 1) {
+      const markerIndex = decisionMarkers[markerIdx].index ?? -1;
+      if (markerIndex < 0) {
+        continue;
+      }
+      let startIndex = cleaned.lastIndexOf("{", markerIndex);
+      let attempts = 0;
+      while (startIndex >= 0 && attempts < MAX_TRIGGER_DEEP_PARSE_ATTEMPTS) {
+        attempts += 1;
+        const candidate = extractBalancedJsonObject(cleaned, startIndex);
+        if (candidate) {
+          try {
+            const parsed = JSON.parse(candidate) as unknown;
+            const nested = this.extractDecisionFromUnknown(parsed, 1);
+            if (nested) {
+              return nested;
+            }
+          } catch {
+            // continue searching
+          }
+        }
+        startIndex = cleaned.lastIndexOf("{", startIndex - 1);
+      }
+    }
+    return null;
   }
 
   private extractDecisionFromUnknown(value: unknown, depth = 0): PollCheckResult | null {

@@ -254,6 +254,15 @@ export class AgentHost {
       return "";
     }
 
+    if (params.agentId === "trigger") {
+      // Trigger poll parser needs complete output context to extract JSON decision.
+      // Trimming by the last N lines can cut off the leading part of JSON and
+      // produce false "missing JSON decision" failures.
+      const full = filtered.join("\n");
+      const maxChars = 120_000;
+      return full.length > maxChars ? full.slice(-maxChars) : full;
+    }
+
     return filtered.slice(-24).join("\n");
   }
 
