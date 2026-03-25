@@ -1257,10 +1257,21 @@ export class TriggerService {
       if (!checkResult.triggered) {
         const notTriggeredReason = (checkResult.reason ?? "condition not met").trim();
         watcher.lastError = diagnostics ?? (isTransientAgentPollReason(notTriggeredReason) ? notTriggeredReason : null);
+        const notTriggeredDetails = this.buildNotTriggeredDetails(checkResult.payload, agentPollRaw);
+        const suffixParts: string[] = [];
+        if (notTriggeredDetails) {
+          suffixParts.push(`Details: ${notTriggeredDetails}`);
+        }
+        if (
+          watcher.lastError
+          && (!notTriggeredDetails || !notTriggeredDetails.toLowerCase().includes(watcher.lastError.toLowerCase()))
+        ) {
+          suffixParts.push(`Error: ${watcher.lastError}`);
+        }
         this.pushWatcherHistory(
           watcher,
-          watcher.lastError
-            ? `Check: not triggered (${notTriggeredReason}). ${watcher.lastError}`
+          suffixParts.length > 0
+            ? `Check: not triggered (${notTriggeredReason}). ${suffixParts.join(" ")}`
             : `Check: not triggered (${notTriggeredReason}).`,
         );
         this.persistTriggerState(watcher.pipelineId, watcher.nodeId, {
@@ -1830,5 +1841,92 @@ export class TriggerService {
     }
     const source = asString(meta.source).trim();
     return source ? `source=${source}` : "source=unknown";
+  }
+
+  private buildNotTriggeredDetails(payload: unknown, raw: string): string | null {
+    const parts: string[] = [];
+    const payloadObject = isObjectRecord(payload) ? payload : null;
+    const rawReport = payloadObject && typeof payloadObject.rawReport === "string" ? payloadObject.rawReport.trim() : "";
+
+    if (payloadObject) {
+      const error = asString(payloadObject.error).trim();
+      if (error) {
+        parts.push(`error=${error}`);
+      }
+      const message = asString(payloadObject.message).trim();
+      if (message) {
+        parts.push(`message=${message.slice(0, 180)}`);
+      }
+      const extra = Object.entries(payloadObject)
+        .filter(([key]) => !["triggered", "reason", "rawReport", "error", "message"].includes(key))
+        .slice(0, 3)
+        .map(([key, value]) => {
+          if (typeof value === "string") {
+            return `${key}=${value.slice(0, 120)}`;
+          }
+          if (typeof value === "number" || typeof value === "boolean") {
+            return `${key}=${String(value)}`;
+          }
+          if (Array.isArray(value)) {
+            return `${key}=[${value.length}]`;
+          }
+          if (isObjectRecord(value)) {
+            return `${key}={...}`;
+          }
+          return "";
+        })
+        .filter(Boolean);
+      parts.push(...extra);
+    }
+
+    const rawCandidate = rawReport || raw.trim();
+    if (rawCandidate) {
+      const hint = this.extractRawNotTriggeredHint(rawCandidate);
+      if (hint) {
+        parts.push(`raw=${hint}`);
+      }
+    }
+
+    if (parts.length === 0) {
+      return null;
+    }
+    return parts.join("; ").slice(0, 500);
+  }
+
+  private extractRawNotTriggeredHint(raw: string): string | null {
+    const ignored = /^(gateway target:|source:|config:|bind:)/i;
+    const lines = raw
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .filter((line) => !ignored.test(line));
+
+    for (let index = lines.length - 1; index >= 0; index -= 1) {
+      const line = lines[index];
+      try {
+        const parsed = JSON.parse(line) as unknown;
+        if (isObjectRecord(parsed)) {
+          const reason = asString(parsed.reason).trim();
+          const error = asString(parsed.error).trim();
+          const message = asString(parsed.message).trim();
+          const payloadParts = [
+            reason ? `reason=${reason}` : "",
+            error ? `error=${error}` : "",
+            message ? `message=${message}` : "",
+          ].filter(Boolean);
+          if (payloadParts.length > 0) {
+            return payloadParts.join(", ").slice(0, 220);
+          }
+        }
+      } catch {
+        // Keep scanning plain text hints.
+      }
+
+      if (line.length > 0) {
+        return line.slice(0, 220);
+      }
+    }
+
+    return null;
   }
 }
