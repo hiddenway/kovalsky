@@ -14,7 +14,6 @@ import "reactflow/dist/style.css";
 import AgentNode from "@/components/builder/agent-node";
 import { AgentsLibrary } from "@/components/builder/agents-library";
 import { InspectorPanel } from "@/components/builder/inspector-panel";
-import { RunConsole } from "@/components/builder/run-console";
 import { TopBar } from "@/components/builder/top-bar";
 import { getApiClient } from "@/lib/api/client";
 import { AGENT_DEFINITIONS, isTriggerAgent } from "@/lib/agents";
@@ -219,19 +218,15 @@ function buildFinalReport(input: {
 
 function CanvasBuilderInner(): React.JSX.Element {
   const [agents, setAgents] = useState<AgentDefinition[]>([]);
-  const [consoleExpanded, setConsoleExpanded] = useState(true);
   const [instance, setInstance] = useState<ReactFlowInstance | null>(null);
   const [leftPanelWidth, setLeftPanelWidth] = useState(260);
   const [rightPanelWidth, setRightPanelWidth] = useState(320);
-  const [consoleHeight, setConsoleHeight] = useState(250);
   const [handoffNodeId, setHandoffNodeId] = useState<string | null>(null);
   const [dragState, setDragState] = useState<{
-    type: "left" | "right" | "console";
+    type: "left" | "right";
     startX: number;
-    startY: number;
     leftWidth: number;
     rightWidth: number;
-    consoleHeight: number;
   } | null>(null);
   const importInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -272,7 +267,6 @@ function CanvasBuilderInner(): React.JSX.Element {
   const initRuns = useRunStore((state) => state.init);
   const startRun = useRunStore((state) => state.startRun);
   const attachExternalRun = useRunStore((state) => state.attachExternalRun);
-  const cancelRun = useRunStore((state) => state.cancelRun);
 
   const pushToast = useToastStore((state) => state.pushToast);
 
@@ -417,7 +411,6 @@ function CanvasBuilderInner(): React.JSX.Element {
 
     const onMouseMove = (event: MouseEvent) => {
       const deltaX = event.clientX - dragState.startX;
-      const deltaY = event.clientY - dragState.startY;
 
       if (dragState.type === "left") {
         const next = Math.min(520, Math.max(200, dragState.leftWidth + deltaX));
@@ -428,11 +421,7 @@ function CanvasBuilderInner(): React.JSX.Element {
       if (dragState.type === "right") {
         const next = Math.min(620, Math.max(240, dragState.rightWidth - deltaX));
         setRightPanelWidth(next);
-        return;
       }
-
-      const next = Math.min(520, Math.max(160, dragState.consoleHeight - deltaY));
-      setConsoleHeight(next);
     };
 
     const onMouseUp = () => {
@@ -442,7 +431,7 @@ function CanvasBuilderInner(): React.JSX.Element {
     window.addEventListener("mousemove", onMouseMove);
     window.addEventListener("mouseup", onMouseUp);
     document.body.style.userSelect = "none";
-    document.body.style.cursor = dragState.type === "console" ? "row-resize" : "col-resize";
+    document.body.style.cursor = "col-resize";
 
     return () => {
       window.removeEventListener("mousemove", onMouseMove);
@@ -700,157 +689,119 @@ function CanvasBuilderInner(): React.JSX.Element {
       <div
         className="grid min-h-0 flex-1"
         style={{
-          gridTemplateRows: consoleExpanded ? `minmax(0,1fr) 6px ${consoleHeight}px` : "minmax(0,1fr) auto",
+          gridTemplateColumns: `${leftPanelWidth}px 6px minmax(0,1fr) 6px ${rightPanelWidth}px`,
         }}
       >
+        <AgentsLibrary agents={agents} onAddAgent={(agentId) => addAgentAtPosition(agentId)} />
+
         <div
-          className="grid min-h-0"
-          style={{
-            gridTemplateColumns: `${leftPanelWidth}px 6px minmax(0,1fr) 6px ${rightPanelWidth}px`,
-          }}
-        >
-          <AgentsLibrary agents={agents} onAddAgent={(agentId) => addAgentAtPosition(agentId)} />
+          className="cursor-col-resize bg-zinc-900/40 transition hover:bg-cyan-500/30"
+          onMouseDown={(event) =>
+            setDragState({
+              type: "left",
+              startX: event.clientX,
+              leftWidth: leftPanelWidth,
+              rightWidth: rightPanelWidth,
+            })
+          }
+        />
 
-          <div
-            className="cursor-col-resize bg-zinc-900/40 transition hover:bg-cyan-500/30"
-            onMouseDown={(event) =>
-              setDragState({
-                type: "left",
-                startX: event.clientX,
-                startY: event.clientY,
-                leftWidth: leftPanelWidth,
-                rightWidth: rightPanelWidth,
-                consoleHeight,
-              })
-            }
-          />
-
-          <div className="min-h-0" onDrop={handleDrop} onDragOver={(event) => event.preventDefault()}>
-            <ReactFlow
-              nodes={displayNodes}
-              edges={displayEdges}
-              onInit={setInstance}
-              onNodesChange={onNodesChange}
-              onEdgesChange={onEdgesChange}
-              onConnect={onConnect}
-              onPaneClick={() => {
-                setSelection({ nodeId: null, edgeId: null });
-                setHandoffNodeId(null);
-              }}
-              onNodeClick={(_, node) => {
-                setSelection({ nodeId: node.id, edgeId: null });
-                setHandoffNodeId(null);
-              }}
-              onEdgeClick={(_, edge) => {
-                setSelection({ nodeId: null, edgeId: edge.id });
-                setHandoffNodeId(null);
-              }}
-              onSelectionChange={(selection) => {
-                const nodeId = selection.nodes.length === 1 ? selection.nodes[0].id : null;
-                const edgeId = selection.edges.length === 1 ? selection.edges[0].id : null;
-                setSelection({ nodeId, edgeId });
-                if (nodeId !== handoffNodeId) {
-                  setHandoffNodeId(null);
-                }
-              }}
-              nodeTypes={NODE_TYPES}
-              fitView
-              fitViewOptions={{ padding: 0.2 }}
-              deleteKeyCode={null}
-              selectionOnDrag
-              panOnDrag
-              className="bg-gradient-to-br from-zinc-950 via-zinc-900 to-zinc-950"
-            >
-              <Background color="#34343a" gap={20} />
-              <MiniMap pannable zoomable className="!bg-zinc-900" />
-              <Controls className="!border-zinc-700 !bg-zinc-900" />
-            </ReactFlow>
-          </div>
-
-          <div
-            className="cursor-col-resize bg-zinc-900/40 transition hover:bg-cyan-500/30"
-            onMouseDown={(event) =>
-              setDragState({
-                type: "right",
-                startX: event.clientX,
-                startY: event.clientY,
-                leftWidth: leftPanelWidth,
-                rightWidth: rightPanelWidth,
-                consoleHeight,
-              })
-            }
-          />
-
-          <InspectorPanel
-            pipelineId={activePipelineId}
-            selectedNode={selectedNode}
-            selectedEdge={selectedEdge}
-            pipeline={{ name, description, tags, workspacePath, chatRerunMode, clearNodeChatContextOnRun }}
-            edgeArtifactTypes={edgeArtifactTypes}
-            activeRunId={latestRun?.run.id ?? null}
-            showHandoff={Boolean(selectedNode && handoffNodeId && selectedNode.id === handoffNodeId)}
-            onCloseHandoff={() => setHandoffNodeId(null)}
-            onNameChange={setSelectedNodeName}
-            onGoalChange={setSelectedNodeGoal}
-            onSettingsChange={setSelectedNodeSettings}
-            onResetNode={() => {
-              setSelectedNodeName("");
-              setSelectedNodeGoal("");
-              setSelectedNodeSettings({});
+        <div className="min-h-0" onDrop={handleDrop} onDragOver={(event) => event.preventDefault()}>
+          <ReactFlow
+            nodes={displayNodes}
+            edges={displayEdges}
+            onInit={setInstance}
+            onNodesChange={onNodesChange}
+            onEdgesChange={onEdgesChange}
+            onConnect={onConnect}
+            onPaneClick={() => {
+              setSelection({ nodeId: null, edgeId: null });
+              setHandoffNodeId(null);
             }}
-            onDeleteSelectedEdge={() => {
-              deleteSelectedEdge();
+            onNodeClick={(_, node) => {
+              setSelection({ nodeId: node.id, edgeId: null });
+              setHandoffNodeId(null);
             }}
-            onBeforeSendChat={async () => {
-              const snapshot = getActivePipelineSnapshot();
-              try {
-                await getApiClient().updatePipeline(snapshot);
-              } catch {
-                // ignore sync errors and let chat call return backend error if any
+            onEdgeClick={(_, edge) => {
+              setSelection({ nodeId: null, edgeId: edge.id });
+              setHandoffNodeId(null);
+            }}
+            onSelectionChange={(selection) => {
+              const nodeId = selection.nodes.length === 1 ? selection.nodes[0].id : null;
+              const edgeId = selection.edges.length === 1 ? selection.edges[0].id : null;
+              setSelection({ nodeId, edgeId });
+              if (nodeId !== handoffNodeId) {
+                setHandoffNodeId(null);
               }
             }}
-            onSavePipeline={handleInspectorSave}
-            onSyncPipeline={async () => {
-              saveActivePipeline();
-              const snapshot = getActivePipelineSnapshot();
-              try {
-                await getApiClient().updatePipeline(snapshot);
-              } catch {
-                await getApiClient().createPipeline(snapshot);
-              }
-            }}
-            onExternalRunStarted={(runId) => {
-              attachExternalRun(runId, getActivePipelineSnapshot());
-            }}
-            onMetadataChange={updateMetadata}
-          />
+            nodeTypes={NODE_TYPES}
+            fitView
+            fitViewOptions={{ padding: 0.2 }}
+            deleteKeyCode={null}
+            selectionOnDrag
+            panOnDrag
+            className="bg-gradient-to-br from-zinc-950 via-zinc-900 to-zinc-950"
+          >
+            <Background color="#34343a" gap={20} />
+            <MiniMap pannable zoomable className="!bg-zinc-900" />
+            <Controls className="!border-zinc-700 !bg-zinc-900" />
+          </ReactFlow>
         </div>
 
-        {consoleExpanded ? (
-          <div
-            className="cursor-row-resize bg-zinc-900/40 transition hover:bg-cyan-500/30"
-            onMouseDown={(event) =>
-              setDragState({
-                type: "console",
-                startX: event.clientX,
-                startY: event.clientY,
-                leftWidth: leftPanelWidth,
-                rightWidth: rightPanelWidth,
-                consoleHeight,
-              })
-            }
-          />
-        ) : null}
+        <div
+          className="cursor-col-resize bg-zinc-900/40 transition hover:bg-cyan-500/30"
+          onMouseDown={(event) =>
+            setDragState({
+              type: "right",
+              startX: event.clientX,
+              leftWidth: leftPanelWidth,
+              rightWidth: rightPanelWidth,
+            })
+          }
+        />
 
-        <RunConsole
-          run={latestRun}
-          expanded={consoleExpanded}
-          onToggleExpanded={() => setConsoleExpanded((value) => !value)}
-          onCancel={() => {
-            if (latestRun) {
-              cancelRun(latestRun.run.id);
+        <InspectorPanel
+          pipelineId={activePipelineId}
+          selectedNode={selectedNode}
+          selectedEdge={selectedEdge}
+          pipeline={{ name, description, tags, workspacePath, chatRerunMode, clearNodeChatContextOnRun }}
+          edgeArtifactTypes={edgeArtifactTypes}
+          activeRunId={latestRun?.run.id ?? null}
+          showHandoff={Boolean(selectedNode && handoffNodeId && selectedNode.id === handoffNodeId)}
+          onCloseHandoff={() => setHandoffNodeId(null)}
+          onNameChange={setSelectedNodeName}
+          onGoalChange={setSelectedNodeGoal}
+          onSettingsChange={setSelectedNodeSettings}
+          onResetNode={() => {
+            setSelectedNodeName("");
+            setSelectedNodeGoal("");
+            setSelectedNodeSettings({});
+          }}
+          onDeleteSelectedEdge={() => {
+            deleteSelectedEdge();
+          }}
+          onBeforeSendChat={async () => {
+            const snapshot = getActivePipelineSnapshot();
+            try {
+              await getApiClient().updatePipeline(snapshot);
+            } catch {
+              // ignore sync errors and let chat call return backend error if any
             }
           }}
+          onSavePipeline={handleInspectorSave}
+          onSyncPipeline={async () => {
+            saveActivePipeline();
+            const snapshot = getActivePipelineSnapshot();
+            try {
+              await getApiClient().updatePipeline(snapshot);
+            } catch {
+              await getApiClient().createPipeline(snapshot);
+            }
+          }}
+          onExternalRunStarted={(runId) => {
+            attachExternalRun(runId, getActivePipelineSnapshot());
+          }}
+          onMetadataChange={updateMetadata}
         />
       </div>
 
