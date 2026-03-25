@@ -478,6 +478,30 @@ function extractReasonFromPollPayload(payload: Record<string, unknown>): string 
   return undefined;
 }
 
+function inferNotTriggeredReasonFromText(raw: string): string | null {
+  const normalized = raw.trim();
+  if (!normalized) {
+    return null;
+  }
+  const lowered = normalized.toLowerCase();
+  if (lowered.includes("gateway closed")) {
+    return "Browser control unavailable (gateway closed).";
+  }
+  if (lowered.includes("browser control unavailable")) {
+    return "Browser control unavailable.";
+  }
+  if (lowered.includes("browser unavailable")) {
+    return "Browser unavailable.";
+  }
+  if (lowered.includes("cannot load page") || lowered.includes("unable to load page")) {
+    return "Cannot load page.";
+  }
+  if (lowered.includes("condition not met")) {
+    return "condition not met";
+  }
+  return null;
+}
+
 function collectDownstreamNodeIds(graph: PipelineGraph, sourceNodeId: string): Set<string> {
   const outgoing = new Map<string, string[]>();
   for (const edge of graph.edges) {
@@ -1402,6 +1426,12 @@ export class TriggerService {
             payload: parsed,
           };
         }
+        if (isObjectRecord(parsed)) {
+          const nested = this.extractDecisionFromUnknown(parsed);
+          if (nested) {
+            return nested;
+          }
+        }
       } catch {
         continue;
       }
@@ -1422,6 +1452,22 @@ export class TriggerService {
 
     const parsed = extractJsonObject(raw);
     if (!parsed || typeof parsed.triggered !== "boolean") {
+      const nested = this.extractDecisionFromUnknown(parsed ?? raw);
+      if (nested) {
+        return nested;
+      }
+      const inferredReason = inferNotTriggeredReasonFromText(raw);
+      if (inferredReason) {
+        return {
+          parsed: true,
+          triggered: false,
+          reason: inferredReason,
+          payload: {
+            triggered: false,
+            reason: inferredReason,
+          },
+        };
+      }
       return { parsed: false, triggered: false };
     }
 
@@ -1431,6 +1477,64 @@ export class TriggerService {
       reason: extractReasonFromPollPayload(parsed),
       payload: parsed,
     };
+  }
+
+  private extractDecisionFromUnknown(value: unknown, depth = 0): PollCheckResult | null {
+    if (depth > 6 || value === null || value === undefined) {
+      return null;
+    }
+
+    if (isObjectRecord(value)) {
+      if (typeof value.triggered === "boolean") {
+        return {
+          parsed: true,
+          triggered: value.triggered,
+          reason: extractReasonFromPollPayload(value),
+          payload: value,
+        };
+      }
+
+      const priorityKeys = ["payload", "result", "data", "message", "content", "text", "output"];
+      for (const key of priorityKeys) {
+        if (key in value) {
+          const nested = this.extractDecisionFromUnknown(value[key], depth + 1);
+          if (nested) {
+            return nested;
+          }
+        }
+      }
+      for (const nestedValue of Object.values(value)) {
+        const nested = this.extractDecisionFromUnknown(nestedValue, depth + 1);
+        if (nested) {
+          return nested;
+        }
+      }
+      return null;
+    }
+
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        const nested = this.extractDecisionFromUnknown(item, depth + 1);
+        if (nested) {
+          return nested;
+        }
+      }
+      return null;
+    }
+
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      if (!trimmed) {
+        return null;
+      }
+      const parsed = extractJsonObject(trimmed);
+      if (parsed) {
+        return this.extractDecisionFromUnknown(parsed, depth + 1);
+      }
+      return null;
+    }
+
+    return null;
   }
 
   private async runAgentPollCheck(watcher: ActiveWatcher): Promise<string> {
