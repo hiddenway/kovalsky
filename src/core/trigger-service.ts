@@ -1277,7 +1277,8 @@ export class TriggerService {
       }
 
       if (!checkResult.triggered) {
-        const notTriggeredReason = (checkResult.reason ?? "").trim() || "agent returned triggered=false without details";
+        const notTriggeredReason = (checkResult.reason ?? "").trim()
+          || "agent returned triggered=false without reason/diagnostics (агент не объяснил причину)";
         watcher.lastError = diagnostics ?? (isTransientAgentPollReason(notTriggeredReason) ? notTriggeredReason : null);
         const notTriggeredDetails = this.buildNotTriggeredDetails(checkResult.payload, agentPollRaw);
         const suffixParts: string[] = [];
@@ -1932,7 +1933,7 @@ export class TriggerService {
           if (parsed.triggered === false) {
             const minimalReason = extractReasonFromPollPayload(parsed);
             if (!minimalReason) {
-              return "triggered=false (no reason/details provided by agent)";
+              return "triggered=false (agent did not provide reason/diagnostics; агент не указал причину)";
             }
           }
           const reason = asString(parsed.reason).trim();
