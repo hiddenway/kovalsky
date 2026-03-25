@@ -1,6 +1,5 @@
 import fs from "node:fs";
 import path from "node:path";
-import net from "node:net";
 import { randomUUID } from "node:crypto";
 import type pino from "pino";
 import { AgentHost } from "./agent-host";
@@ -926,7 +925,6 @@ export class TriggerService {
     nodeId: string;
   }): Promise<TriggerStatusResponse> {
     const watcherKey = this.toWatcherKey(input.pipelineId, input.nodeId);
-    this.stopWatcher(watcherKey);
 
     const pipeline = this.db.getPipeline(input.pipelineId);
     if (!pipeline) {
@@ -948,6 +946,18 @@ export class TriggerService {
     const config = triggerState.generated;
     if (!config) {
       throw new Error("Generate the trigger before activating it.");
+    }
+
+    const existingWatcher = this.watchers.get(watcherKey);
+    if (existingWatcher) {
+      const sameConfig = JSON.stringify(existingWatcher.config) === JSON.stringify(config)
+        && existingWatcher.workspacePath === workspacePath
+        && existingWatcher.pipelineId === input.pipelineId
+        && existingWatcher.nodeId === input.nodeId;
+      if (sameConfig) {
+        return this.buildStatusResponse(existingWatcher, triggerState.summary);
+      }
+      this.stopWatcher(watcherKey);
     }
 
     const watcher: ActiveWatcher = {
@@ -1428,15 +1438,7 @@ export class TriggerService {
       throw new Error("agent_poll config is required for agent poll checks.");
     }
 
-    const baseEnv = await this.runService.buildAutomationEnv();
-    const gatewayPort = await this.allocateOpenClawGatewayPort();
-    const env: NodeJS.ProcessEnv = gatewayPort
-      ? {
-          ...baseEnv,
-          OPENCLAW_GATEWAY_PORT: String(gatewayPort),
-          OPENCLAW_GATEWAY_BIND: "loopback",
-        }
-      : baseEnv;
+    const env = await this.runService.buildAutomationEnv();
     const stepRunId = `trigger-agent-poll-${randomUUID()}`;
     const stepDir = path.join(this.runtimeDir, stepRunId);
     const stepLogPath = path.join(stepDir, "logs.txt");
@@ -1452,9 +1454,6 @@ export class TriggerService {
       // Trigger checks should run in isolated OpenClaw state to avoid
       // browser-control loopback port contention (EADDRINUSE) between runs.
       useIsolatedState: true,
-      gatewayPort: gatewayPort ?? undefined,
-      gatewayBind: "loopback",
-      browserDefaultProfile: "openclaw",
       timeoutSeconds,
       reportPromptTemplate: buildAgentPollPrompt(watcher.goal, watcher.config.agentPrompt),
     };
@@ -1493,38 +1492,6 @@ export class TriggerService {
         },
       },
       timeoutMs: timeoutSeconds * 1000,
-    });
-  }
-
-  private async allocateOpenClawGatewayPort(): Promise<number | null> {
-    const minPort = 22000;
-    const maxPort = 52000;
-    const maxAttempts = 24;
-
-    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-      const basePort = minPort + Math.floor(Math.random() * (maxPort - minPort));
-      const ok = await this.arePortsFree([basePort, basePort + 1, basePort + 2]);
-      if (ok) {
-        return basePort;
-      }
-    }
-    return null;
-  }
-
-  private async arePortsFree(ports: number[]): Promise<boolean> {
-    const checks = await Promise.all(ports.map((port) => this.isPortFree(port)));
-    return checks.every(Boolean);
-  }
-
-  private async isPortFree(port: number): Promise<boolean> {
-    return new Promise<boolean>((resolve) => {
-      const server = net.createServer();
-      server.once("error", () => {
-        resolve(false);
-      });
-      server.listen(port, "127.0.0.1", () => {
-        server.close(() => resolve(true));
-      });
     });
   }
 
