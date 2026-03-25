@@ -840,6 +840,7 @@ export const openclawPlugin: AgentPlugin = {
         passGoalAsArg: { type: "boolean" },
         goalFlag: { type: "string" },
         reportPromptTemplate: { type: "string" },
+        reportRuntimeLikeAgent: { type: "boolean" },
         persistBackgroundProcesses: { type: "boolean" },
         useIsolatedState: { type: "boolean" },
         gatewayPort: { type: "number" },
@@ -885,26 +886,45 @@ export const openclawPlugin: AgentPlugin = {
         const reportTimeoutSeconds = typeof ctx.settings.timeoutSeconds === "number" && Number.isFinite(ctx.settings.timeoutSeconds)
           ? Math.max(30, Math.min(180, Math.floor(ctx.settings.timeoutSeconds)))
           : 90;
+        const reportRuntimeLikeAgent = ctx.settings.reportRuntimeLikeAgent === true;
         const configuredAgent = typeof ctx.settings.agentId === "string" && ctx.settings.agentId.trim()
           ? ctx.settings.agentId.trim()
           : null;
         const agentId = configuredAgent ?? detectDefaultAgent(profile) ?? "main";
         selectedAgentId = agentId;
         const sessionId = buildSessionId(ctx, buildReportSessionSuffix());
-        commandArgs = [
-          "agent",
-          "--local",
-          "--agent",
-          agentId,
-          "--session-id",
-          sessionId,
-          "--thinking",
-          "minimal",
-          "--timeout",
-          String(reportTimeoutSeconds),
-          "--message",
-          buildReportMessage(ctx),
-        ];
+        if (reportRuntimeLikeAgent) {
+          commandArgs = [
+            "agent",
+            "--local",
+            "--json",
+            "--agent",
+            agentId,
+            "--session-id",
+            sessionId,
+            "--thinking",
+            typeof ctx.settings.thinking === "string" ? ctx.settings.thinking : "minimal",
+            "--timeout",
+            String(reportTimeoutSeconds),
+            "--message",
+            buildReportMessage(ctx),
+          ];
+        } else {
+          commandArgs = [
+            "agent",
+            "--local",
+            "--agent",
+            agentId,
+            "--session-id",
+            sessionId,
+            "--thinking",
+            "minimal",
+            "--timeout",
+            String(reportTimeoutSeconds),
+            "--message",
+            buildReportMessage(ctx),
+          ];
+        }
       } else if (mode === "raw" && configuredArgs.length > 0) {
         commandArgs = [...configuredArgs];
         const passGoalAsArg = ctx.settings.passGoalAsArg === true;
