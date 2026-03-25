@@ -1,4 +1,6 @@
 import fs from "node:fs";
+import { execFileSync, spawnSync } from "node:child_process";
+import os from "node:os";
 import path from "node:path";
 import type pino from "pino";
 import { ArtifactStore } from "../artifacts/store";
@@ -81,6 +83,213 @@ function createOpenClawCompletionDetector(): (line: string) => boolean {
   };
 }
 
+type SemverTriplet = [number, number, number];
+
+function parseSemverTriplet(raw: string): SemverTriplet | null {
+  const match = raw.trim().match(/^v?(\d+)\.(\d+)\.(\d+)/);
+  if (!match) {
+    return null;
+  }
+  return [Number(match[1]), Number(match[2]), Number(match[3])];
+}
+
+function isSemverAtLeast(current: string, minimum: string): boolean {
+  const left = parseSemverTriplet(current);
+  const right = parseSemverTriplet(minimum);
+  if (!left || !right) {
+    return false;
+  }
+  for (let index = 0; index < 3; index += 1) {
+    if (left[index] > right[index]) {
+      return true;
+    }
+    if (left[index] < right[index]) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function extractMinNodeVersion(range: string): string | null {
+  const normalized = range.trim();
+  if (!normalized) {
+    return null;
+  }
+
+  const exact = normalized.match(/^v?(\d+)\.(\d+)\.(\d+)$/);
+  if (exact) {
+    return `${exact[1]}.${exact[2]}.${exact[3]}`;
+  }
+
+  const greaterOrEqual = normalized.match(/>=\s*v?(\d+)\.(\d+)\.(\d+)/);
+  if (greaterOrEqual) {
+    return `${greaterOrEqual[1]}.${greaterOrEqual[2]}.${greaterOrEqual[3]}`;
+  }
+
+  return null;
+}
+
+function resolveCommandPath(command: string): string | null {
+  const trimmed = command.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  if (trimmed.includes("/") || trimmed.includes("\\") || trimmed.startsWith(".")) {
+    const absolute = path.resolve(trimmed);
+    return fs.existsSync(absolute) ? absolute : null;
+  }
+
+  const probe = process.platform === "win32" ? "where" : "which";
+  const result = spawnSync(probe, [trimmed], {
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "ignore"],
+  });
+  if (result.status !== 0) {
+    return null;
+  }
+
+  const firstLine = (result.stdout ?? "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .find(Boolean);
+  if (!firstLine) {
+    return null;
+  }
+
+  return fs.existsSync(firstLine) ? firstLine : null;
+}
+
+function resolveOpenclawEntrypoint(command: string): { commandPath: string; entrypoint: string } | null {
+  const commandPath = resolveCommandPath(command);
+  if (!commandPath) {
+    return null;
+  }
+
+  const realPath = fs.realpathSync(commandPath);
+  const baseName = path.basename(realPath).toLowerCase();
+  if (baseName === "openclaw.mjs") {
+    return { commandPath, entrypoint: realPath };
+  }
+
+  return null;
+}
+
+function readRequiredNodeVersionForOpenclaw(entrypoint: string): string | null {
+  const packagePath = path.join(path.dirname(entrypoint), "package.json");
+  if (!fs.existsSync(packagePath)) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(fs.readFileSync(packagePath, "utf8")) as { engines?: { node?: unknown } };
+    if (!parsed.engines || typeof parsed.engines.node !== "string") {
+      return null;
+    }
+    return extractMinNodeVersion(parsed.engines.node);
+  } catch {
+    return null;
+  }
+}
+
+function readNodeVersion(nodeCommand: string): string | null {
+  try {
+    const output = execFileSync(nodeCommand, ["-p", "process.versions.node"], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+      timeout: 2000,
+    }).trim();
+    return output || null;
+  } catch {
+    return null;
+  }
+}
+
+function collectNvmNodeCandidates(): string[] {
+  const binaryName = process.platform === "win32" ? "node.exe" : "node";
+  const root = path.join(os.homedir(), ".nvm", "versions", "node");
+  if (!fs.existsSync(root)) {
+    return [];
+  }
+
+  const entries = fs.readdirSync(root, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => ({
+      name: entry.name,
+      parsed: parseSemverTriplet(entry.name),
+    }))
+    .filter((item): item is { name: string; parsed: SemverTriplet } => Boolean(item.parsed))
+    .sort((left, right) => {
+      for (let index = 0; index < 3; index += 1) {
+        if (left.parsed[index] > right.parsed[index]) {
+          return -1;
+        }
+        if (left.parsed[index] < right.parsed[index]) {
+          return 1;
+        }
+      }
+      return 0;
+    })
+    .map((item) => path.join(root, item.name, "bin", binaryName))
+    .filter((candidate) => fs.existsSync(candidate));
+
+  return entries;
+}
+
+function resolveCompatibleNodeForOpenclaw(minVersion: string, preferredDir: string): string | null {
+  const binaryName = process.platform === "win32" ? "node.exe" : "node";
+  const candidates = [
+    (process.env.KOVALSKY_OPENCLAW_NODE_PATH ?? "").trim(),
+    (process.env.KOVALSKY_NODE_PATH ?? "").trim(),
+    path.join(preferredDir, binaryName),
+    "node",
+    ...collectNvmNodeCandidates(),
+  ].filter(Boolean);
+
+  const seen = new Set<string>();
+  for (const candidate of candidates) {
+    if (seen.has(candidate)) {
+      continue;
+    }
+    seen.add(candidate);
+    const version = readNodeVersion(candidate);
+    if (!version) {
+      continue;
+    }
+    if (isSemverAtLeast(version, minVersion)) {
+      return candidate;
+    }
+  }
+
+  return null;
+}
+
+function maybeWrapOpenclawWithCompatibleNode(command: string, args: string[]): { command: string; args: string[] } {
+  const resolved = resolveOpenclawEntrypoint(command);
+  if (!resolved) {
+    return { command, args };
+  }
+
+  const requiredNodeVersion = readRequiredNodeVersionForOpenclaw(resolved.entrypoint);
+  if (!requiredNodeVersion) {
+    return { command, args };
+  }
+
+  if (isSemverAtLeast(process.versions.node, requiredNodeVersion)) {
+    return { command, args };
+  }
+
+  const compatibleNode = resolveCompatibleNodeForOpenclaw(requiredNodeVersion, path.dirname(resolved.commandPath));
+  if (!compatibleNode) {
+    return { command, args };
+  }
+
+  return {
+    command: compatibleNode,
+    args: [resolved.entrypoint, ...args],
+  };
+}
+
 export class AgentHost {
   constructor(
     private readonly pluginRegistry: PluginRegistry,
@@ -108,6 +317,7 @@ export class AgentHost {
 
     const prepared = await plugin.adapter.prepareCommand(params.context);
     const resolvedCommand = await this.toolchainService.ensureAgentCommand(params.agentId, prepared.command);
+    const invocation = maybeWrapOpenclawWithCompatibleNode(resolvedCommand, prepared.args);
 
     fs.mkdirSync(path.dirname(params.context.stepLogPath), { recursive: true });
     const logStream = fs.createWriteStream(params.context.stepLogPath, { flags: "a" });
@@ -130,8 +340,8 @@ export class AgentHost {
     this.logger.info(
       {
         stepRunId: params.context.stepRunId,
-        command: resolvedCommand,
-        args: prepared.args,
+        command: invocation.command,
+        args: invocation.args,
       },
       "starting step command",
     );
@@ -142,8 +352,8 @@ export class AgentHost {
 
     const runResult = await this.processManager.run({
       key: params.context.stepRunId,
-      command: resolvedCommand,
-      args: prepared.args,
+      command: invocation.command,
+      args: invocation.args,
       cwd: prepared.cwd ?? params.context.workspacePath,
       env: {
         ...params.context.env,
@@ -212,6 +422,7 @@ export class AgentHost {
       reportMode: true,
     });
     const resolvedCommand = await this.toolchainService.ensureAgentCommand(params.agentId, prepared.command);
+    const invocation = maybeWrapOpenclawWithCompatibleNode(resolvedCommand, prepared.args);
 
     const stdoutLines: string[] = [];
     const stderrLines: string[] = [];
@@ -219,8 +430,8 @@ export class AgentHost {
 
     await this.processManager.run({
       key: this.buildReportProcessKey(params.context.stepRunId),
-      command: resolvedCommand,
-      args: prepared.args,
+      command: invocation.command,
+      args: invocation.args,
       cwd: prepared.cwd ?? params.context.workspacePath,
       env: {
         ...params.context.env,
