@@ -450,11 +450,33 @@ function buildAgentPollPrompt(goal: string, agentPrompt: string): string {
     "For TikTok/social feed checks, treat condition as met when the page is open and at least one relevant visible item is present.",
     "Do not require full metadata for every field; if any meaningful visible data is captured, return triggered=true.",
     "Return strict JSON only in one line.",
-    "{\"triggered\":true,\"reason\":\"...\"}",
+    "Always include a non-empty reason string.",
+    "When triggered=false, include diagnostics with blocker and observed counters.",
+    "{\"triggered\":true,\"reason\":\"...\",\"diagnostics\":{\"visibleItems\":3,\"pageUrl\":\"...\"}}",
     "or",
-    "{\"triggered\":false}",
+    "{\"triggered\":false,\"reason\":\"...\",\"diagnostics\":{\"blocker\":\"...\",\"visibleItems\":0,\"pageUrl\":\"...\"}}",
     "You may include extra JSON fields for downstream workflow payload.",
   ].join("\n");
+}
+
+function extractReasonFromPollPayload(payload: Record<string, unknown>): string | undefined {
+  const reason = asString(payload.reason).trim();
+  if (reason) {
+    return reason;
+  }
+  const error = asString(payload.error).trim();
+  if (error) {
+    return `error=${error}`;
+  }
+  const message = asString(payload.message).trim();
+  if (message) {
+    return message;
+  }
+  const blocker = asString(payload.blocker).trim();
+  if (blocker) {
+    return `blocker=${blocker}`;
+  }
+  return undefined;
 }
 
 function collectDownstreamNodeIds(graph: PipelineGraph, sourceNodeId: string): Set<string> {
@@ -1255,7 +1277,7 @@ export class TriggerService {
       }
 
       if (!checkResult.triggered) {
-        const notTriggeredReason = (checkResult.reason ?? "condition not met").trim();
+        const notTriggeredReason = (checkResult.reason ?? "").trim() || "agent returned triggered=false without details";
         watcher.lastError = diagnostics ?? (isTransientAgentPollReason(notTriggeredReason) ? notTriggeredReason : null);
         const notTriggeredDetails = this.buildNotTriggeredDetails(checkResult.payload, agentPollRaw);
         const suffixParts: string[] = [];
@@ -1361,10 +1383,11 @@ export class TriggerService {
           };
         }
         if (isObjectRecord(parsed) && parsed.triggered === false) {
+          const reason = extractReasonFromPollPayload(parsed);
           return {
             parsed: true,
             triggered: false,
-            reason: typeof parsed.reason === "string" ? parsed.reason : undefined,
+            reason,
             payload: parsed,
           };
         }
@@ -1394,7 +1417,7 @@ export class TriggerService {
     return {
       parsed: true,
       triggered: parsed.triggered,
-      reason: typeof parsed.reason === "string" ? parsed.reason : undefined,
+      reason: extractReasonFromPollPayload(parsed),
       payload: parsed,
     };
   }
@@ -1906,6 +1929,12 @@ export class TriggerService {
       try {
         const parsed = JSON.parse(line) as unknown;
         if (isObjectRecord(parsed)) {
+          if (parsed.triggered === false) {
+            const minimalReason = extractReasonFromPollPayload(parsed);
+            if (!minimalReason) {
+              return "triggered=false (no reason/details provided by agent)";
+            }
+          }
           const reason = asString(parsed.reason).trim();
           const error = asString(parsed.error).trim();
           const message = asString(parsed.message).trim();
