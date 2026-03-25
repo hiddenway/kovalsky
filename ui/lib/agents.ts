@@ -22,6 +22,13 @@ export const AGENT_DEFINITIONS: AgentDefinition[] = [
     icon: "🪝",
     outputs: ["TriggerConfig", "TriggerScript", "WorkflowStart"],
   },
+  {
+    id: "loop",
+    title: "Loop",
+    description: "Restarts a selected workflow branch after a delay, enabling iterative cycles.",
+    icon: "🔁",
+    outputs: ["LoopContinuation"],
+  },
 ];
 
 export type AgentSettingField = {
@@ -267,6 +274,24 @@ const AGENT_SETTING_FIELDS: Record<string, AgentSettingField[]> = {
       ],
     },
   ],
+  loop: [
+    {
+      key: "delaySeconds",
+      label: "Delay (sec)",
+      type: "number",
+      defaultValue: 10,
+      min: 0,
+      step: 1,
+      description: "Wait time before starting the next cycle.",
+    },
+    {
+      key: "carryContext",
+      label: "Carry Context",
+      type: "boolean",
+      defaultValue: true,
+      description: "Reuse accumulated node chat context in the next cycle.",
+    },
+  ],
 };
 
 const AGENT_ALIASES: Record<string, string> = {
@@ -274,6 +299,7 @@ const AGENT_ALIASES: Record<string, string> = {
   "codex-cli": "codex-cli",
   openclaw: "openclaw",
   trigger: "trigger",
+  loop: "loop",
 };
 
 export function normalizeAgentId(agentId: string): string {
@@ -287,6 +313,10 @@ export function getAgentById(agentId: string): AgentDefinition | undefined {
 
 export function isTriggerAgent(agentId: string): boolean {
   return normalizeAgentId(agentId) === "trigger";
+}
+
+export function isLoopAgent(agentId: string): boolean {
+  return normalizeAgentId(agentId) === "loop";
 }
 
 export function getSupportedAgents(agents: AgentDefinition[]): AgentDefinition[] {

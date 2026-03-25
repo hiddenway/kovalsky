@@ -30,6 +30,18 @@ export interface RunControl {
   isCanceled(): boolean;
 }
 
+export interface LoopContinuationRequest {
+  sourceNodeId: string;
+  targetNodeIds: string[];
+  delaySeconds: number;
+  carryContext: boolean;
+}
+
+export interface RunExecutionResult {
+  status: RunStatus;
+  loopContinuation: LoopContinuationRequest | null;
+}
+
 export class GraphExecutor {
   private readonly activeStepRunsByRun = new Map<string, Set<string>>();
   private readonly activeReportStepRunsByRun = new Map<string, Set<string>>();
@@ -53,7 +65,7 @@ export class GraphExecutor {
     runPlan: RunPlanData,
     overrides: ExecutionOverrides,
     control: RunControl,
-  ): Promise<RunStatus> {
+  ): Promise<RunExecutionResult> {
     const maxParallel = Math.max(1, overrides.maxParallelSteps ?? 3);
     const stopOnFailure = overrides.stopOnFailure ?? true;
     this.activeStepRunsByRun.set(runId, new Set<string>());
@@ -72,7 +84,10 @@ export class GraphExecutor {
       });
       this.activeStepRunsByRun.delete(runId);
       this.activeReportStepRunsByRun.delete(runId);
-      return "canceled";
+      return {
+        status: "canceled",
+        loopContinuation: null,
+      };
     }
 
     this.db.updateRunStatus(runId, "running", null);
@@ -89,11 +104,15 @@ export class GraphExecutor {
     const incomingCount = new Map<string, number>();
     const nodeById = new Map<string, PipelineGraphNode>();
     const stepRunByNode = new Map<string, string>();
+    const loopTargetsByNode = new Map<string, string[]>();
 
     for (const node of graph.nodes) {
       outgoing.set(node.id, []);
       incomingCount.set(node.id, 0);
       nodeById.set(node.id, node);
+      if (node.agentId === "loop") {
+        loopTargetsByNode.set(node.id, []);
+      }
       const stepRun = this.db.createStepRun(runId, node.id, node.agentId);
       stepRunByNode.set(node.id, stepRun.id);
       this.eventBus.emit({
@@ -110,6 +129,10 @@ export class GraphExecutor {
     }
 
     for (const edge of graph.edges) {
+      if (loopTargetsByNode.has(edge.source)) {
+        loopTargetsByNode.get(edge.source)?.push(edge.target);
+        continue;
+      }
       outgoing.get(edge.source)?.push(edge.target);
       incomingCount.set(edge.target, (incomingCount.get(edge.target) ?? 0) + 1);
     }
@@ -121,6 +144,7 @@ export class GraphExecutor {
     const statusByNode = new Map<string, StepStatus>();
     const running = new Map<string, Promise<void>>();
     let fatalError: string | null = null;
+    let loopContinuation: LoopContinuationRequest | null = null;
 
     const launchNode = (nodeId: string): Promise<void> => {
       const node = nodeById.get(nodeId);
@@ -202,6 +226,62 @@ export class GraphExecutor {
               ready.push(next);
             }
           }
+          return;
+        }
+
+        if (node.agentId === "loop") {
+          const delaySeconds = this.resolveLoopDelaySeconds(node.settings ?? {});
+          const carryContext = this.resolveLoopCarryContext(node.settings ?? {});
+          const targetNodeIds = [...new Set(loopTargetsByNode.get(nodeId) ?? [])];
+
+          statusByNode.set(nodeId, "success");
+          this.db.updateStepRunStatus(stepRunId, "success", 0, null);
+          this.eventBus.emit({
+            runId,
+            type: "step_status",
+            at: new Date().toISOString(),
+            payload: {
+              nodeId,
+              stepRunId,
+              status: "success",
+            },
+          });
+
+          if (targetNodeIds.length === 0) {
+            this.writeNodeMessage(
+              runId,
+              nodeId,
+              "system",
+              "run",
+              "Loop node completed. No restart targets are connected.",
+            );
+            return;
+          }
+
+          if (!loopContinuation) {
+            loopContinuation = {
+              sourceNodeId: nodeId,
+              targetNodeIds,
+              delaySeconds,
+              carryContext,
+            };
+            this.writeNodeMessage(
+              runId,
+              nodeId,
+              "system",
+              "run",
+              `Loop requested next cycle in ${delaySeconds}s. Targets: ${targetNodeIds.join(", ")}. Carry context: ${carryContext ? "yes" : "no"}.`,
+            );
+          } else {
+            this.writeNodeMessage(
+              runId,
+              nodeId,
+              "system",
+              "run",
+              "Loop request ignored because another loop continuation is already scheduled for this run.",
+            );
+          }
+
           return;
         }
 
@@ -510,7 +590,10 @@ export class GraphExecutor {
 
     this.activeStepRunsByRun.delete(runId);
     this.activeReportStepRunsByRun.delete(runId);
-    return runStatus;
+    return {
+      status: runStatus,
+      loopContinuation: runStatus === "success" ? loopContinuation : null,
+    };
   }
 
   async cancelRun(runId: string): Promise<void> {
@@ -885,5 +968,18 @@ export class GraphExecutor {
     ].join("\n");
 
     return `${baseGoal}${retryContext}`;
+  }
+
+  private resolveLoopDelaySeconds(settings: Record<string, unknown>): number {
+    const raw = settings.delaySeconds;
+    if (typeof raw !== "number" || !Number.isFinite(raw)) {
+      return 10;
+    }
+    return Math.max(0, Math.floor(raw));
+  }
+
+  private resolveLoopCarryContext(settings: Record<string, unknown>): boolean {
+    const raw = settings.carryContext;
+    return typeof raw === "boolean" ? raw : true;
   }
 }

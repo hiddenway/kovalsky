@@ -27,6 +27,7 @@ import { readCodexAuthState } from "../utils/codex-auth";
 import { SettingsService } from "./settings-service";
 import type { OpenClawProviderMode } from "./settings-service";
 import { resolveWorkspacePath } from "../utils/workspace-path";
+import type { LoopContinuationRequest } from "./graph-executor";
 
 interface ActiveRunControl {
   canceled: boolean;
@@ -173,6 +174,17 @@ export class RunService {
           isCanceled: () => control.canceled,
         },
       )
+      .then((result) => {
+        if (result.status !== "success" || !result.loopContinuation) {
+          return;
+        }
+        this.scheduleLoopContinuation({
+          pipelineId,
+          workspacePath,
+          continuation: result.loopContinuation,
+          previousOverrides: overrides,
+        });
+      })
       .catch((error) => {
         const message = error instanceof Error ? error.message : "Run failed";
         this.logger.error({ err: error, runId: run.id }, "run execution failed");
@@ -183,6 +195,133 @@ export class RunService {
       });
 
     return { runId: run.id };
+  }
+
+  private scheduleLoopContinuation(input: {
+    pipelineId: string;
+    workspacePath: string;
+    continuation: LoopContinuationRequest;
+    previousOverrides: StartRunOverrides;
+  }): void {
+    const delayMs = Math.max(0, input.continuation.delaySeconds * 1000);
+    const runNextCycle = async (): Promise<void> => {
+      const pipeline = this.db.getPipeline(input.pipelineId);
+      if (!pipeline) {
+        return;
+      }
+
+      let graph: PipelineGraph;
+      try {
+        graph = JSON.parse(pipeline.graph_json) as PipelineGraph;
+      } catch {
+        return;
+      }
+
+      const nextGraph = this.buildLoopContinuationGraph(graph, input.continuation);
+      if (nextGraph.nodes.length === 0) {
+        this.logger.warn(
+          {
+            pipelineId: input.pipelineId,
+            continuation: input.continuation,
+          },
+          "loop continuation was skipped because no reachable restart graph was produced",
+        );
+        return;
+      }
+
+      try {
+        const started = await this.startRun(input.pipelineId, nextGraph, {
+          workspacePath: input.workspacePath,
+          maxParallelSteps: input.previousOverrides.maxParallelSteps,
+          stopOnFailure: input.previousOverrides.stopOnFailure,
+          timeoutMs: input.previousOverrides.timeoutMs,
+          credentialId: input.previousOverrides.credentialId,
+          clearNodeChatContext: !input.continuation.carryContext,
+        });
+        this.logger.info(
+          {
+            pipelineId: input.pipelineId,
+            runId: started.runId,
+            delaySeconds: input.continuation.delaySeconds,
+            carryContext: input.continuation.carryContext,
+            restartTargets: input.continuation.targetNodeIds,
+          },
+          "loop continuation run started",
+        );
+      } catch (error) {
+        this.logger.error(
+          {
+            err: error,
+            pipelineId: input.pipelineId,
+            continuation: input.continuation,
+          },
+          "failed to start loop continuation run",
+        );
+      }
+    };
+
+    if (delayMs === 0) {
+      void runNextCycle();
+      return;
+    }
+
+    setTimeout(() => {
+      void runNextCycle();
+    }, delayMs);
+  }
+
+  private buildLoopContinuationGraph(graph: PipelineGraph, continuation: LoopContinuationRequest): PipelineGraph {
+    const nodeById = new Map(graph.nodes.map((node) => [node.id, node]));
+    const loopNodeIds = new Set(
+      graph.nodes
+        .filter((node) => node.agentId === "loop")
+        .map((node) => node.id),
+    );
+    const restartTargets = [...new Set(continuation.targetNodeIds)].filter((nodeId) => nodeById.has(nodeId));
+    if (restartTargets.length === 0) {
+      return { nodes: [], edges: [] };
+    }
+
+    const outgoing = new Map<string, string[]>();
+    for (const node of graph.nodes) {
+      outgoing.set(node.id, []);
+    }
+    for (const edge of graph.edges) {
+      if (loopNodeIds.has(edge.source)) {
+        continue;
+      }
+      outgoing.get(edge.source)?.push(edge.target);
+    }
+
+    const reachable = new Set<string>();
+    const stack = [...restartTargets];
+    while (stack.length > 0) {
+      const current = stack.pop() as string;
+      if (reachable.has(current) || !nodeById.has(current)) {
+        continue;
+      }
+      reachable.add(current);
+      for (const next of outgoing.get(current) ?? []) {
+        if (!reachable.has(next)) {
+          stack.push(next);
+        }
+      }
+    }
+
+    const restartTargetSet = new Set(restartTargets);
+    return {
+      nodes: graph.nodes.filter((node) => reachable.has(node.id)),
+      edges: graph.edges.filter((edge) =>
+        reachable.has(edge.source)
+        && reachable.has(edge.target)
+        && (
+          // Keep loopback edges so the next cycle can schedule continuation again.
+          loopNodeIds.has(edge.source)
+          // Restart targets are cycle entry points and must start without non-loop prerequisites.
+          || !restartTargetSet.has(edge.target)
+        )
+      ),
+    };
   }
 
   async buildAutomationEnv(openaiCredentialId?: string): Promise<NodeJS.ProcessEnv> {
@@ -1864,12 +2003,21 @@ export class RunService {
   private buildDeterministicPlan(runId: string, pipelineId: string, graph: PipelineGraph): RunPlanData {
     const incoming = new Map<string, string[]>();
     const outgoing = new Map<string, string[]>();
+    const loopNodeIds = new Set(
+      graph.nodes
+        .filter((node) => node.agentId === "loop")
+        .map((node) => node.id),
+    );
     for (const node of graph.nodes) {
       incoming.set(node.id, []);
       outgoing.set(node.id, []);
     }
 
     for (const edge of graph.edges) {
+      if (loopNodeIds.has(edge.source)) {
+        // loopback edges are continuation links for the next cycle, not same-run dependencies.
+        continue;
+      }
       incoming.get(edge.target)?.push(edge.source);
       outgoing.get(edge.source)?.push(edge.target);
     }

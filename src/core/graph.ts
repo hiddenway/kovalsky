@@ -1,5 +1,19 @@
 import type { PipelineGraph } from "../types";
 
+const LOOP_AGENT_ID = "loop";
+
+function buildLoopNodeIdSet(graph: PipelineGraph): Set<string> {
+  return new Set(
+    graph.nodes
+      .filter((node) => node.agentId === LOOP_AGENT_ID)
+      .map((node) => node.id),
+  );
+}
+
+function isLoopbackEdge(edge: { source: string }, loopNodeIds: Set<string>): boolean {
+  return loopNodeIds.has(edge.source);
+}
+
 export function validateDag(graph: PipelineGraph): void {
   if (!Array.isArray(graph.nodes) || !Array.isArray(graph.edges)) {
     throw new Error("Invalid graph format");
@@ -23,7 +37,11 @@ export function validateDag(graph: PipelineGraph): void {
     adjacency.set(node.id, []);
   }
 
+  const loopNodeIds = buildLoopNodeIdSet(graph);
   for (const edge of graph.edges) {
+    if (isLoopbackEdge(edge, loopNodeIds)) {
+      continue;
+    }
     inDegree.set(edge.target, (inDegree.get(edge.target) ?? 0) + 1);
     adjacency.get(edge.source)?.push(edge.target);
   }
@@ -62,7 +80,11 @@ export function topologicalSort(graph: PipelineGraph): string[] {
     adjacency.set(node.id, []);
   }
 
+  const loopNodeIds = buildLoopNodeIdSet(graph);
   for (const edge of graph.edges) {
+    if (isLoopbackEdge(edge, loopNodeIds)) {
+      continue;
+    }
     inDegree.set(edge.target, (inDegree.get(edge.target) ?? 0) + 1);
     adjacency.get(edge.source)?.push(edge.target);
   }
@@ -97,7 +119,11 @@ export function collectPredecessors(graph: PipelineGraph, nodeId: string): Set<s
   for (const node of graph.nodes) {
     reverse.set(node.id, []);
   }
+  const loopNodeIds = buildLoopNodeIdSet(graph);
   for (const edge of graph.edges) {
+    if (isLoopbackEdge(edge, loopNodeIds)) {
+      continue;
+    }
     reverse.get(edge.target)?.push(edge.source);
   }
 

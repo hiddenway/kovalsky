@@ -4,6 +4,7 @@ import { DatabaseService } from "../db";
 import { codexPlugin } from "./builtin/codex";
 import { openclawPlugin } from "./builtin/openclaw";
 import { triggerPlugin } from "./builtin/trigger";
+import { loopPlugin } from "./builtin/loop";
 import type { AgentPlugin } from "./types";
 import type { AgentManifest } from "../types";
 
@@ -19,6 +20,7 @@ export class PluginRegistry {
     this.registerBuiltin(codexPlugin);
     this.registerBuiltin(openclawPlugin);
     this.registerBuiltin(triggerPlugin);
+    this.registerBuiltin(loopPlugin);
     await this.loadFromPluginsDir();
   }
 
