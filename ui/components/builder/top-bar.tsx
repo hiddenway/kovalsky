@@ -10,6 +10,7 @@ type Props = {
   backHref: string;
   onNameChange: (value: string) => void;
   onRun: () => void;
+  onCancelRun: () => void;
   onSave: () => void;
   onExport: () => void;
   onImport: () => void;
@@ -24,6 +25,7 @@ export function TopBar({
   backHref,
   onNameChange,
   onRun,
+  onCancelRun,
   onSave,
   onExport,
   onImport,
@@ -58,9 +60,15 @@ export function TopBar({
         placeholder="Workflow Name"
       />
 
-      <Button type="button" onClick={onRun} disabled={isRunning || Boolean(runDisabledReason)} title={runDisabledReason ?? undefined}>
-        {isRunning ? "Running..." : runDisabledReason ? "Trigger-Controlled" : "Run"}
-      </Button>
+      {isRunning ? (
+        <Button type="button" variant="danger" onClick={onCancelRun}>
+          Cancel Workflow
+        </Button>
+      ) : (
+        <Button type="button" onClick={onRun} disabled={Boolean(runDisabledReason)} title={runDisabledReason ?? undefined}>
+          {runDisabledReason ? "Trigger-Controlled" : "Run"}
+        </Button>
+      )}
       <Button type="button" variant="secondary" onClick={onSave}>
         Save
       </Button>

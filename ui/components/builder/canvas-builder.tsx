@@ -266,6 +266,7 @@ function CanvasBuilderInner(): React.JSX.Element {
   const records = useRunStore((state) => state.records);
   const initRuns = useRunStore((state) => state.init);
   const startRun = useRunStore((state) => state.startRun);
+  const cancelRun = useRunStore((state) => state.cancelRun);
   const attachExternalRun = useRunStore((state) => state.attachExternalRun);
 
   const pushToast = useToastStore((state) => state.pushToast);
@@ -499,6 +500,20 @@ function CanvasBuilderInner(): React.JSX.Element {
     }
   }, [getActivePipelineSnapshot, pushToast, saveActivePipeline, startRun]);
 
+  const cancelActiveRun = useCallback(() => {
+    const runId = latestRun?.run.id;
+    if (!runId || latestRun?.run.status !== "running") {
+      return;
+    }
+
+    cancelRun(runId);
+    pushToast({
+      title: "Run cancel requested",
+      description: `Run ID: ${runId}`,
+      tone: "info",
+    });
+  }, [cancelRun, latestRun, pushToast]);
+
   const handleSave = useCallback(async () => {
     saveActivePipeline();
     const snapshot = getActivePipelineSnapshot();
@@ -668,6 +683,7 @@ function CanvasBuilderInner(): React.JSX.Element {
         backHref="/pipelines"
         onNameChange={(value) => updateMetadata({ name: value })}
         onRun={() => void runPipeline()}
+        onCancelRun={cancelActiveRun}
         onSave={handleSave}
         onExport={handleExport}
         onImport={() => importInputRef.current?.click()}
