@@ -278,7 +278,7 @@ function resolveCompatibleNodeForOpenclaw(minVersion: string, preferredDir: stri
   return null;
 }
 
-function maybeWrapOpenclawWithCompatibleNode(command: string, args: string[]): { command: string; args: string[] } {
+export function maybeWrapOpenclawWithCompatibleNode(command: string, args: string[]): { command: string; args: string[] } {
   const resolved = resolveOpenclawEntrypoint(command);
   if (!resolved) {
     return { command, args };
@@ -314,6 +314,21 @@ export class AgentHost {
     private readonly logger: pino.Logger,
     private readonly defaultStepTimeoutMs: number,
   ) {}
+
+  async resolveAgentInvocation(params: {
+    agentId: string;
+    command: string;
+    args: string[];
+  }): Promise<{ command: string; args: string[] }> {
+    const resolvedCommand = await this.toolchainService.ensureAgentCommand(params.agentId, params.command);
+    if (params.agentId === "openclaw" || params.agentId === "trigger") {
+      return maybeWrapOpenclawWithCompatibleNode(resolvedCommand, params.args);
+    }
+    return {
+      command: resolvedCommand,
+      args: params.args,
+    };
+  }
 
   async runStep(params: {
     agentId: string;

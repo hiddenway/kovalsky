@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { spawnSync } from "node:child_process";
 import type pino from "pino";
 import { GraphExecutor } from "./graph-executor";
 import { DatabaseService } from "../db";
@@ -52,9 +53,15 @@ interface FollowupReplyResult {
   decision: FollowupRerunDecision;
 }
 
+const DEFAULT_OPENCLAW_GATEWAY_PORT = 47289;
+const OPENCLAW_GATEWAY_ENSURE_INTERVAL_MS = 15_000;
+const OPENCLAW_GATEWAY_COMMAND_TIMEOUT_MS = 20_000;
+
 export class RunService {
   private readonly controls = new Map<string, ActiveRunControl>();
   private readonly activeNodeFollowupReruns = new Set<string>();
+  private readonly openClawGatewayEnsureLocks = new Map<string, Promise<void>>();
+  private readonly openClawGatewayLastCheckedAt = new Map<string, number>();
   private readonly db: DatabaseService;
   private readonly graphExecutor: GraphExecutor;
   private readonly agentHost: AgentHost;
@@ -1491,6 +1498,11 @@ export class RunService {
       providerMode: openClawMode,
       customApiBaseUrl: customOpenClawBaseUrl,
     });
+    try {
+      await this.ensureOpenClawGatewayReady(env, openClawStateDir);
+    } catch (error) {
+      this.logger.warn({ err: error, openClawStateDir }, "failed to bootstrap openclaw gateway");
+    }
 
     return env;
   }
@@ -1567,7 +1579,226 @@ export class RunService {
       gateway.bind = "loopback";
     }
 
+    const currentPort = this.normalizeGatewayPort(gateway.port);
+    if (currentPort === null) {
+      gateway.port = this.resolveDefaultOpenClawGatewayPort();
+    }
+
     config.gateway = gateway;
+  }
+
+  private resolveDefaultOpenClawGatewayPort(): number {
+    const explicit = this.normalizeGatewayPort(process.env.KOVALSKY_OPENCLAW_GATEWAY_PORT);
+    if (explicit !== null) {
+      return explicit;
+    }
+    return DEFAULT_OPENCLAW_GATEWAY_PORT;
+  }
+
+  private normalizeGatewayPort(value: unknown): number | null {
+    const parsed = typeof value === "number"
+      ? value
+      : typeof value === "string"
+        ? Number(value.trim())
+        : NaN;
+    if (!Number.isFinite(parsed)) {
+      return null;
+    }
+    const normalized = Math.floor(parsed);
+    if (normalized < 1 || normalized > 65535) {
+      return null;
+    }
+    return normalized;
+  }
+
+  private resolveDesiredOpenClawGatewayPort(stateDir: string): number {
+    const configPath = path.join(stateDir, "openclaw.json");
+    const config = this.readJsonObject(configPath);
+    const gatewayValue = config.gateway;
+    const gateway = gatewayValue && typeof gatewayValue === "object" && !Array.isArray(gatewayValue)
+      ? gatewayValue as Record<string, unknown>
+      : null;
+    const configuredPort = this.normalizeGatewayPort(gateway?.port);
+    if (configuredPort !== null) {
+      return configuredPort;
+    }
+    return this.resolveDefaultOpenClawGatewayPort();
+  }
+
+  private async ensureOpenClawGatewayReady(env: NodeJS.ProcessEnv, stateDir: string): Promise<void> {
+    const now = Date.now();
+    const lastCheckedAt = this.openClawGatewayLastCheckedAt.get(stateDir) ?? 0;
+    if (now - lastCheckedAt < OPENCLAW_GATEWAY_ENSURE_INTERVAL_MS) {
+      return;
+    }
+
+    const inFlight = this.openClawGatewayEnsureLocks.get(stateDir);
+    if (inFlight) {
+      await inFlight;
+      return;
+    }
+
+    const ensurePromise = this.ensureOpenClawGatewayReadyInternal(env, stateDir)
+      .then(() => {
+        this.openClawGatewayLastCheckedAt.set(stateDir, Date.now());
+      })
+      .finally(() => {
+        this.openClawGatewayEnsureLocks.delete(stateDir);
+      });
+
+    this.openClawGatewayEnsureLocks.set(stateDir, ensurePromise);
+    await ensurePromise;
+  }
+
+  private async ensureOpenClawGatewayReadyInternal(env: NodeJS.ProcessEnv, stateDir: string): Promise<void> {
+    const invocation = await this.agentHost.resolveAgentInvocation({
+      agentId: "openclaw",
+      command: "openclaw",
+      args: [],
+    });
+
+    const desiredPort = this.resolveDesiredOpenClawGatewayPort(stateDir);
+    const statusBefore = this.runOpenClawGatewayCommand(invocation, ["gateway", "status", "--json"], env, stateDir);
+    const beforeHealthy = this.isOpenClawGatewayHealthy(statusBefore.output, desiredPort);
+    if (statusBefore.ok && beforeHealthy) {
+      return;
+    }
+
+    this.logger.info({
+      openClawStateDir: stateDir,
+      desiredPort,
+      statusCode: statusBefore.statusCode,
+    }, "openclaw gateway is not ready, attempting bootstrap");
+
+    const install = this.runOpenClawGatewayCommand(
+      invocation,
+      ["gateway", "install", "--force", "--runtime", "node"],
+      env,
+      stateDir,
+    );
+    if (!install.ok) {
+      throw new Error(this.formatGatewayCommandFailure("install", install));
+    }
+
+    const start = this.runOpenClawGatewayCommand(invocation, ["gateway", "start"], env, stateDir);
+    if (!start.ok) {
+      throw new Error(this.formatGatewayCommandFailure("start", start));
+    }
+
+    const statusAfter = this.runOpenClawGatewayCommand(invocation, ["gateway", "status", "--json"], env, stateDir);
+    if (!statusAfter.ok || !this.isOpenClawGatewayHealthy(statusAfter.output, desiredPort)) {
+      throw new Error(this.formatGatewayCommandFailure("status", statusAfter));
+    }
+  }
+
+  private runOpenClawGatewayCommand(
+    invocation: { command: string; args: string[] },
+    args: string[],
+    env: NodeJS.ProcessEnv,
+    stateDir: string,
+  ): {
+    ok: boolean;
+    statusCode: number | null;
+    output: string;
+    error: string | null;
+  } {
+    const result = spawnSync(invocation.command, [...invocation.args, ...args], {
+      cwd: os.homedir(),
+      env: {
+        ...env,
+        OPENCLAW_STATE_DIR: stateDir,
+      },
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+      timeout: OPENCLAW_GATEWAY_COMMAND_TIMEOUT_MS,
+    });
+    const output = `${result.stdout ?? ""}\n${result.stderr ?? ""}`.trim();
+    const error = result.error ? (result.error.message || String(result.error)) : null;
+    return {
+      ok: result.status === 0 && !error,
+      statusCode: result.status ?? null,
+      output,
+      error,
+    };
+  }
+
+  private isOpenClawGatewayHealthy(rawStatus: string, desiredPort: number): boolean {
+    const status = this.parseOpenClawGatewayStatus(rawStatus);
+    if (!status) {
+      return false;
+    }
+    if (!status.rpcOk) {
+      return false;
+    }
+    if (status.port !== null && status.port !== desiredPort) {
+      return false;
+    }
+    return true;
+  }
+
+  private parseOpenClawGatewayStatus(raw: string): { rpcOk: boolean; port: number | null } | null {
+    const parsed = this.parseJsonObjectFromText(raw);
+    if (!parsed) {
+      return null;
+    }
+
+    const rpcValue = parsed.rpc;
+    const rpc = rpcValue && typeof rpcValue === "object" && !Array.isArray(rpcValue)
+      ? rpcValue as Record<string, unknown>
+      : null;
+    const rpcOk = rpc?.ok === true;
+
+    const gatewayValue = parsed.gateway;
+    const gateway = gatewayValue && typeof gatewayValue === "object" && !Array.isArray(gatewayValue)
+      ? gatewayValue as Record<string, unknown>
+      : null;
+    const port = this.normalizeGatewayPort(gateway?.port);
+    return {
+      rpcOk,
+      port,
+    };
+  }
+
+  private parseJsonObjectFromText(raw: string): Record<string, unknown> | null {
+    const normalized = raw.trim();
+    if (!normalized) {
+      return null;
+    }
+
+    const candidates: string[] = [normalized];
+    const start = normalized.indexOf("{");
+    const end = normalized.lastIndexOf("}");
+    if (start >= 0 && end > start) {
+      candidates.push(normalized.slice(start, end + 1));
+    }
+
+    for (const candidate of candidates) {
+      try {
+        const parsed = JSON.parse(candidate) as unknown;
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+          return parsed as Record<string, unknown>;
+        }
+      } catch {
+        // Try next candidate.
+      }
+    }
+
+    return null;
+  }
+
+  private formatGatewayCommandFailure(
+    operation: "install" | "start" | "status",
+    result: { statusCode: number | null; output: string; error: string | null },
+  ): string {
+    const output = result.output.trim();
+    const summary = output
+      ? output.split(/\r?\n/).filter(Boolean).slice(-6).join(" | ")
+      : "no output";
+    const statusCode = result.statusCode === null ? "null" : String(result.statusCode);
+    if (result.error) {
+      return `OpenClaw gateway ${operation} failed (${result.error}; exit=${statusCode}): ${summary}`;
+    }
+    return `OpenClaw gateway ${operation} failed (exit=${statusCode}): ${summary}`;
   }
 
   private resolveDefaultOpenClawModel(input: {
