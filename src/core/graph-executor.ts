@@ -748,10 +748,26 @@ export class GraphExecutor {
     const failureSignals = input.logTail
       .filter((line) => /(browser failed|gateway closed|browser unavailable|unable to open|failed to open)/i.test(line))
       .slice(-2);
+    const successSignals = input.logTail
+      .filter((line) =>
+        /(opened https?:\/\/|navigation (?:complete|succeeded)|page loaded|browser task completed|verified|resolved url)/i.test(
+          line,
+        ),
+      )
+      .slice(-2);
+    const hasBrowserEvidenceArtifact = input.artifactTitles.some((title) => /(resolved url|url|blackboxreport)/i.test(title));
+
     if (failureSignals.length > 0) {
       lines.push(`Browser result: failed (${failureSignals[failureSignals.length - 1]}).`);
+    } else if (successSignals.length > 0 || hasBrowserEvidenceArtifact) {
+      const signal = successSignals[successSignals.length - 1];
+      lines.push(
+        signal
+          ? `Browser result: success (${signal}).`
+          : "Browser result: success (browser evidence found in artifacts).",
+      );
     } else if (input.status === "success") {
-      lines.push("Browser result: no browser failure signals detected in recent logs.");
+      lines.push("Browser result: unverified (no explicit browser success/failure signals found in recent logs).");
     }
 
     if (input.artifactTitles.length > 0) {
@@ -760,6 +776,8 @@ export class GraphExecutor {
 
     if (input.status !== "success") {
       lines.push("Action: browser task was not completed successfully.");
+    } else if (failureSignals.length === 0 && successSignals.length === 0 && !hasBrowserEvidenceArtifact) {
+      lines.push("Action: browser outcome is unverified; check step logs or rerun with stricter browser-only instructions.");
     }
 
     return lines.join("\n");

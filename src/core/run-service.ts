@@ -1050,18 +1050,6 @@ export class RunService {
       .filter((artifact) => artifact.produced_by_step_run_id === stepRun.id)
       .filter((artifact) => artifact.type !== "BlackboxReport");
     const artifactTitles = stepArtifacts.map((artifact) => `${artifact.title} (${artifact.type})`);
-    if (node.agentId === "openclaw") {
-      return this.applyImmediateFollowupPolicy(input.prompt, {
-        reply: this.buildFallbackFollowupReply({
-          prompt: input.prompt,
-          status: stepRun.status,
-          stepError: stepRun.error_summary,
-          artifactTitles,
-          urls: this.extractUrls(stepArtifacts),
-        }),
-        decision: "no_rerun",
-      });
-    }
 
     const resolvedInputs: ResolvedInputs = {
       inputsByType: {},
