@@ -713,6 +713,7 @@ function applyWorkspaceOverrideToState(input: {
   const agents = isObjectRecord(config.agents) ? { ...config.agents } : {};
   const defaults = isObjectRecord(agents.defaults) ? { ...agents.defaults } : {};
   defaults.workspace = workspacePath;
+  defaults.timeoutSeconds = 600;
   if (input.model) {
     const model = isObjectRecord(defaults.model) ? { ...defaults.model } : {};
     model.primary = input.model;

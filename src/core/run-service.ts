@@ -1982,6 +1982,7 @@ export class RunService {
         this.normalizeCodexOauthAgentModelOverrides(agents, resolvedDefaultModel);
       }
       defaults.model = model;
+      defaults.timeoutSeconds = 600;
       agents.defaults = defaults;
       config.agents = agents;
       this.ensureOpenClawOpenAiProviderConfig(config, input.customApiBaseUrl);
