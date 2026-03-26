@@ -1552,6 +1552,24 @@ export class RunService {
     config.models = models;
   }
 
+  private ensureOpenClawGatewayConfig(config: Record<string, unknown>): void {
+    const gateway = (config.gateway && typeof config.gateway === "object")
+      ? { ...(config.gateway as Record<string, unknown>) }
+      : {};
+
+    const currentMode = typeof gateway.mode === "string" ? gateway.mode.trim().toLowerCase() : "";
+    if (!currentMode) {
+      gateway.mode = "local";
+    }
+
+    const currentBind = typeof gateway.bind === "string" ? gateway.bind.trim().toLowerCase() : "";
+    if (!currentBind) {
+      gateway.bind = "loopback";
+    }
+
+    config.gateway = gateway;
+  }
+
   private resolveDefaultOpenClawModel(input: {
     providerMode: OpenClawProviderMode;
     token: string;
@@ -1725,6 +1743,7 @@ export class RunService {
       agents.defaults = defaults;
       config.agents = agents;
       this.ensureOpenClawOpenAiProviderConfig(config, input.customApiBaseUrl);
+      this.ensureOpenClawGatewayConfig(config);
 
       this.writeJsonObject(configPath, config);
     } catch (error) {
