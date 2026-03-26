@@ -1587,6 +1587,29 @@ export class RunService {
     config.gateway = gateway;
   }
 
+  private resolveDefaultOpenClawBrowserProfile(): string {
+    const explicit = (process.env.KOVALSKY_OPENCLAW_BROWSER_DEFAULT_PROFILE ?? "").trim();
+    if (explicit) {
+      return explicit;
+    }
+    return "openclaw";
+  }
+
+  private ensureOpenClawBrowserConfig(config: Record<string, unknown>): void {
+    const browser = (config.browser && typeof config.browser === "object")
+      ? { ...(config.browser as Record<string, unknown>) }
+      : {};
+
+    const currentDefaultProfile = typeof browser.defaultProfile === "string"
+      ? browser.defaultProfile.trim()
+      : "";
+    if (!currentDefaultProfile) {
+      browser.defaultProfile = this.resolveDefaultOpenClawBrowserProfile();
+    }
+
+    config.browser = browser;
+  }
+
   private resolveDefaultOpenClawGatewayPort(): number {
     const explicit = this.normalizeGatewayPort(process.env.KOVALSKY_OPENCLAW_GATEWAY_PORT);
     if (explicit !== null) {
@@ -1974,6 +1997,7 @@ export class RunService {
       agents.defaults = defaults;
       config.agents = agents;
       this.ensureOpenClawOpenAiProviderConfig(config, input.customApiBaseUrl);
+      this.ensureOpenClawBrowserConfig(config);
       this.ensureOpenClawGatewayConfig(config);
 
       this.writeJsonObject(configPath, config);
