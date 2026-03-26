@@ -660,6 +660,12 @@ export class GraphExecutor {
     }
 
     if (params.node.agentId === "openclaw") {
+      const extracted = this.extractOpenClawPayloadTextFromLog(params.stepLogPath);
+      if (extracted) {
+        this.writeNodeMessage(params.runId, params.node.id, "agent", "run", `Post-step report:\n${extracted}`);
+        return;
+      }
+
       const content = this.buildOpenClawPostStepReport({
         status: params.status,
         errorSummary: params.errorSummary,
@@ -755,7 +761,7 @@ export class GraphExecutor {
         ),
       )
       .slice(-2);
-    const hasBrowserEvidenceArtifact = input.artifactTitles.some((title) => /(resolved url|url|blackboxreport)/i.test(title));
+    const hasBrowserEvidenceArtifact = input.artifactTitles.some((title) => /blackboxreport/i.test(title));
 
     if (failureSignals.length > 0) {
       lines.push(`Browser result: failed (${failureSignals[failureSignals.length - 1]}).`);
@@ -797,6 +803,110 @@ export class GraphExecutor {
         .filter(Boolean);
     } catch {
       return [];
+    }
+  }
+
+  private extractOpenClawPayloadTextFromLog(stepLogPath: string): string | null {
+    try {
+      if (!fs.existsSync(stepLogPath)) {
+        return null;
+      }
+
+      const raw = fs.readFileSync(stepLogPath, "utf8");
+      if (!raw.trim()) {
+        return null;
+      }
+
+      const stripAnsi = (input: string): string => input.replace(/\x1B\[[0-9;]*m/g, "");
+      const normalized = raw
+        .split(/\r?\n/)
+        .map((line) => line.replace(/^\[(stdout|stderr)\]\s?/i, ""))
+        .map(stripAnsi)
+        .join("\n");
+
+      let capturing = false;
+      let depth = 0;
+      let inString = false;
+      let escaped = false;
+      let jsonBuffer = "";
+      const payloadTexts: string[] = [];
+
+      const pushPayloadTexts = (jsonText: string): void => {
+        try {
+          const parsed = JSON.parse(jsonText) as { payloads?: unknown };
+          if (!Array.isArray(parsed.payloads)) {
+            return;
+          }
+          for (const item of parsed.payloads) {
+            if (!item || typeof item !== "object") {
+              continue;
+            }
+            const text = (item as { text?: unknown }).text;
+            if (typeof text === "string" && text.trim()) {
+              payloadTexts.push(text.trim());
+            }
+          }
+        } catch {
+          // ignore malformed payload block
+        }
+      };
+
+      for (const char of `${normalized}\n`) {
+        if (!capturing) {
+          if (char !== "{") {
+            continue;
+          }
+          capturing = true;
+          depth = 1;
+          inString = false;
+          escaped = false;
+          jsonBuffer = "{";
+          continue;
+        }
+
+        jsonBuffer += char;
+
+        if (inString) {
+          if (escaped) {
+            escaped = false;
+            continue;
+          }
+          if (char === "\\") {
+            escaped = true;
+            continue;
+          }
+          if (char === "\"") {
+            inString = false;
+          }
+          continue;
+        }
+
+        if (char === "\"") {
+          inString = true;
+          continue;
+        }
+        if (char === "{") {
+          depth += 1;
+          continue;
+        }
+        if (char === "}") {
+          depth -= 1;
+          if (depth !== 0) {
+            continue;
+          }
+          pushPayloadTexts(jsonBuffer);
+          capturing = false;
+          depth = 0;
+          inString = false;
+          escaped = false;
+          jsonBuffer = "";
+        }
+      }
+
+      const last = payloadTexts.at(-1)?.trim();
+      return last || null;
+    } catch {
+      return null;
     }
   }
 
