@@ -136,6 +136,29 @@ function asNumber(value: unknown): number | null {
   return null;
 }
 
+function summarizeScriptPollDiagnostics(lines: string[]): string | null {
+  const cleaned = lines
+    .map((line) => line.replace(/\u001b\[[0-9;]*m/g, "").trim())
+    .filter(Boolean);
+  if (cleaned.length === 0) {
+    return null;
+  }
+
+  const withoutNodeVersion = cleaned.filter((line) => !/^Node\.js v\d+/i.test(line));
+  const source = withoutNodeVersion.length > 0 ? withoutNodeVersion : cleaned;
+  let errorIndex = -1;
+  for (let index = source.length - 1; index >= 0; index -= 1) {
+    if (/(syntaxerror|typeerror|referenceerror|error:|exception)/i.test(source[index])) {
+      errorIndex = index;
+      break;
+    }
+  }
+  const focus = errorIndex >= 0
+    ? source.slice(Math.max(0, errorIndex - 1), Math.min(source.length, errorIndex + 2))
+    : source.slice(-2);
+  return focus.join(" | ").slice(0, 500);
+}
+
 function sanitizeFileName(input: string, fallbackStem: string): string {
   const trimmed = input.trim();
   const safe = trimmed.replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
@@ -1221,7 +1244,7 @@ export class TriggerService {
         });
 
         checkResult = this.parsePollOutput(stdoutLines);
-        diagnostics = stderrLines.filter(Boolean).slice(-1)[0] ?? null;
+        diagnostics = summarizeScriptPollDiagnostics(stderrLines);
       } else if (watcher.config.type === "agent_poll") {
         let lastRaw = "";
         for (let attempt = 1; attempt <= 2; attempt += 1) {
