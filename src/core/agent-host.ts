@@ -89,7 +89,16 @@ function extractOpenClawFailureSignal(line: string): string | null {
     return null;
   }
 
-  const failurePattern = /(browser failed|gateway closed|browser unavailable|browser tool unavailable|unable to open|failed to open)/i;
+  const browserFailurePattern = /(browser failed|gateway closed|browser unavailable|browser tool unavailable|unable to open|failed to open)/i;
+  const fatalExecFailurePattern =
+    /(?:\[tools\]\s+exec failed:\s*(?:zsh:\d+:\s*unmatched|.*syntax error|.*unexpected eof|.*invalid (?:json|regular expression)|.*failed to start cli))/i;
+  const fatalExecSummaryPattern =
+    /(?:exec:\s*`[^`]*`\s*failed:\s*(?:zsh:\d+:\s*unmatched|.*syntax error|.*unexpected eof|.*invalid (?:json|regular expression)|.*failed to start cli))/i;
+
+  const failurePattern = new RegExp(
+    `${browserFailurePattern.source}|${fatalExecFailurePattern.source}|${fatalExecSummaryPattern.source}`,
+    "i",
+  );
   if (!failurePattern.test(normalized)) {
     return null;
   }
