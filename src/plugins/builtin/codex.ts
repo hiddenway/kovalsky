@@ -159,6 +159,15 @@ function buildCodexGoal(ctx: StepExecutionContext): string {
     parts.push("Use `grep -R`, `find`, or `ls` instead of `rg` for search tasks.");
     parts.push("If a command fails with `command not found: rg`, retry immediately with fallback commands.");
   }
+  if (!commandExists("python")) {
+    if (commandExists("python3")) {
+      parts.push("Environment note: `python` is unavailable; use `python3` for Python scripts.");
+      parts.push("If a command fails with `command not found: python`, retry immediately with `python3`.");
+    } else {
+      parts.push("Environment note: Python is unavailable (`python`/`python3` not found).");
+      parts.push("Do not rely on Python scripts; use shell/node alternatives.");
+    }
+  }
 
   parts.push(
     "Self-sufficient execution rule: if this step needs app/test servers or commands, start them in this step and pass runnable instructions in handoff; do not rely on previous step runtime.",

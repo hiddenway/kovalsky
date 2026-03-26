@@ -365,6 +365,15 @@ function buildAgentMessage(ctx: StepExecutionContext): string {
     lines.push("For search, use shell fallbacks (`grep -R`, `find`, `ls`) instead of `rg`.");
     lines.push("Do not stop after `command not found: rg`; immediately retry with fallback commands.");
   }
+  if (!commandExists("python")) {
+    if (commandExists("python3")) {
+      lines.push("Environment note: `python` is unavailable; use `python3` for Python scripts.");
+      lines.push("If a command fails with `command not found: python`, retry with `python3` immediately.");
+    } else {
+      lines.push("Environment note: Python is unavailable (`python`/`python3` not found).");
+      lines.push("Do not rely on Python scripts; use shell/node alternatives.");
+    }
+  }
   const urlCandidates = collectResolvedUrlCandidates(ctx);
   if (urlCandidates.length > 0) {
     lines.push(`Resolved URL candidates:\n${urlCandidates.slice(0, 8).map((url) => `- ${url}`).join("\n")}`);
