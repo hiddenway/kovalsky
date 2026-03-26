@@ -8,7 +8,7 @@ function toGatewayGraph(pipeline: Pipeline): GatewayPipelineGraph {
     nodes: pipeline.nodes.map((node) => ({
       id: node.id,
       agentId: node.data.agentId,
-      goal: node.data.goal,
+      goal: node.data.agentId === "loop" ? undefined : node.data.goal,
       settings: node.data.settings,
       position: node.position ? { x: node.position.x, y: node.position.y } : undefined,
     })),

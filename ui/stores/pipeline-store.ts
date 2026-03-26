@@ -9,7 +9,7 @@ import {
   type NodeChange,
   type XYPosition,
 } from "reactflow";
-import { AGENT_DEFINITIONS, normalizeAgentId } from "@/lib/agents";
+import { AGENT_DEFINITIONS, isLoopAgent, normalizeAgentId } from "@/lib/agents";
 import { exportPipelineToJson, importPipelineFromJson, readPipelinesFromStorage, writePipelinesToStorage } from "@/lib/pipeline-storage";
 import type { Pipeline, PipelineNodeData, ReactFlowEdge, ReactFlowNode, StepStatus } from "@/lib/types";
 
@@ -53,7 +53,7 @@ function normalizeTemplatePipeline(template: Pipeline, index: number): Pipeline 
     seenNodeIds.add(nextNodeId);
 
     const normalizedAgentId = normalizeAgentId(node.data?.agentId ?? "codex-cli");
-    const defaultGoal = `Goal for ${normalizedAgentId}`;
+    const defaultGoal = isLoopAgent(normalizedAgentId) ? "" : `Goal for ${normalizedAgentId}`;
     const x = typeof node.position?.x === "number" ? node.position.x : 120 + nodeIndex * 280;
     const y = typeof node.position?.y === "number" ? node.position.y : 120;
     return {
@@ -473,7 +473,7 @@ export const usePipelineStore = create<PipelineState>((set, get) => ({
       position: nextPosition,
       data: {
         agentId: normalizedAgentId,
-        goal: `Goal for ${definition?.title ?? agentId}`,
+        goal: isLoopAgent(normalizedAgentId) ? "" : `Goal for ${definition?.title ?? agentId}`,
       },
     };
 

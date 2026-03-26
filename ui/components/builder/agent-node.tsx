@@ -2,7 +2,7 @@
 
 import { memo } from "react";
 import { Handle } from "reactflow";
-import { getAgentById, isTriggerAgent } from "@/lib/agents";
+import { getAgentById, isLoopAgent, isTriggerAgent } from "@/lib/agents";
 import type { PipelineNodeData } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -57,6 +57,7 @@ function AgentNode({ data, selected = false }: AgentNodeProps): React.JSX.Elemen
   const status = data.runtimeStatus ?? data.handoff?.status;
   const statusLabel = data.runtimeStatusLabel ?? (status ? (STATUS_LABELS[status] ?? status) : "");
   const triggerMode = isTriggerAgent(data.agentId) ? readTriggerLifecycleStatus(data.settings) : null;
+  const showGoal = !isLoopAgent(data.agentId);
   const leftPosition = "left" as never;
   const rightPosition = "right" as never;
 
@@ -124,9 +125,11 @@ function AgentNode({ data, selected = false }: AgentNodeProps): React.JSX.Elemen
         </button>
       ) : null}
 
-      <div className="mt-2 rounded border border-zinc-800 bg-zinc-950/80 p-2 text-xs text-zinc-300">
-        <p className="whitespace-pre-wrap break-words">{data.goal || "Goal is empty"}</p>
-      </div>
+      {showGoal ? (
+        <div className="mt-2 rounded border border-zinc-800 bg-zinc-950/80 p-2 text-xs text-zinc-300">
+          <p className="whitespace-pre-wrap break-words">{data.goal || "Goal is empty"}</p>
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { GatewayRunSnapshot, TriggerGenerationResponse, TriggerHistoryEntry, TriggerStatusResponse } from "@/lib/api/contracts";
-import { getAgentById, getAgentSettingFields, isTriggerAgent, type AgentSettingField } from "@/lib/agents";
+import { getAgentById, getAgentSettingFields, isLoopAgent, isTriggerAgent, type AgentSettingField } from "@/lib/agents";
 import { getApiClient } from "@/lib/api/client";
 import type { PipelineNodeData, ReactFlowEdge, ReactFlowNode } from "@/lib/types";
 import { Button } from "@/components/ui/button";
@@ -745,15 +745,17 @@ export function InspectorPanel({
             </div>
           ) : null}
 
-          <div>
-            <p className="mb-1 text-xs text-zinc-400">Goal</p>
-            <textarea
-              value={selectedNode.data.goal}
-              onChange={(event) => onGoalChange(event.target.value)}
-              className="min-h-28 w-full resize-y rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 outline-none ring-cyan-400/40 focus:ring"
-              placeholder={isTriggerAgent(selectedNode.data.agentId) ? "Describe the event that should launch this workflow" : "Describe what this agent must do"}
-            />
-          </div>
+          {!isLoopAgent(selectedNode.data.agentId) ? (
+            <div>
+              <p className="mb-1 text-xs text-zinc-400">Goal</p>
+              <textarea
+                value={selectedNode.data.goal}
+                onChange={(event) => onGoalChange(event.target.value)}
+                className="min-h-28 w-full resize-y rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 outline-none ring-cyan-400/40 focus:ring"
+                placeholder={isTriggerAgent(selectedNode.data.agentId) ? "Describe the event that should launch this workflow" : "Describe what this agent must do"}
+              />
+            </div>
+          ) : null}
 
           {isTriggerAgent(selectedNode.data.agentId) ? (
             <div className="space-y-3 rounded-md border border-zinc-800 bg-zinc-900/70 p-3">
