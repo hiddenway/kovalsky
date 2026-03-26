@@ -659,6 +659,19 @@ export class GraphExecutor {
       return;
     }
 
+    if (params.node.agentId === "openclaw") {
+      const content = this.buildOpenClawPostStepReport({
+        status: params.status,
+        errorSummary: params.errorSummary,
+        artifactTitles: params.artifactTitles,
+        logTail: this.readStepLogTail(params.stepLogPath, 20),
+      });
+      if (content) {
+        this.writeNodeMessage(params.runId, params.node.id, "agent", "run", `Post-step report:\n${content}`);
+      }
+      return;
+    }
+
     const reportTimeoutMs = Math.max(15_000, Math.min(params.timeoutMs ?? 120_000, 180_000));
     this.activeReportStepRunsByRun.get(params.runId)?.add(params.stepRunId);
 
@@ -718,6 +731,38 @@ export class GraphExecutor {
     }
 
     return agentId === "openclaw" || agentId === "codex-cli" || agentId === "codex";
+  }
+
+  private buildOpenClawPostStepReport(input: {
+    status: StepStatus;
+    errorSummary: string | null;
+    artifactTitles: string[];
+    logTail: string[];
+  }): string {
+    const lines: string[] = [];
+    lines.push(`Status: ${input.status}.`);
+    if (input.errorSummary) {
+      lines.push(`Error: ${input.errorSummary}`);
+    }
+
+    const failureSignals = input.logTail
+      .filter((line) => /(browser failed|gateway closed|browser unavailable|unable to open|failed to open)/i.test(line))
+      .slice(-2);
+    if (failureSignals.length > 0) {
+      lines.push(`Browser result: failed (${failureSignals[failureSignals.length - 1]}).`);
+    } else if (input.status === "success") {
+      lines.push("Browser result: no browser failure signals detected in recent logs.");
+    }
+
+    if (input.artifactTitles.length > 0) {
+      lines.push(`Artifacts: ${input.artifactTitles.join(", ")}`);
+    }
+
+    if (input.status !== "success") {
+      lines.push("Action: browser task was not completed successfully.");
+    }
+
+    return lines.join("\n");
   }
 
   private readStepLogTail(stepLogPath: string, maxLines: number): string[] {

@@ -83,6 +83,20 @@ function createOpenClawCompletionDetector(): (line: string) => boolean {
   };
 }
 
+function extractOpenClawFailureSignal(line: string): string | null {
+  const normalized = line.trim();
+  if (!normalized) {
+    return null;
+  }
+
+  const failurePattern = /(browser failed|gateway closed|browser unavailable|browser tool unavailable|unable to open|failed to open)/i;
+  if (!failurePattern.test(normalized)) {
+    return null;
+  }
+
+  return normalized.length > 320 ? `${normalized.slice(0, 317)}...` : normalized;
+}
+
 type SemverTriplet = [number, number, number];
 
 function parseSemverTriplet(raw: string): SemverTriplet | null {
@@ -349,6 +363,7 @@ export class AgentHost {
     const openclawCompletion = params.agentId === "openclaw"
       ? createOpenClawCompletionDetector()
       : null;
+    let openclawFailureSignal: string | null = null;
 
     const runResult = await this.processManager.run({
       key: params.context.stepRunId,
@@ -360,8 +375,18 @@ export class AgentHost {
         ...prepared.env,
       },
       timeoutMs: params.timeoutMs ?? this.defaultStepTimeoutMs,
-      onStdout: (line) => writeLog("stdout", line),
-      onStderr: (line) => writeLog("stderr", line),
+      onStdout: (line) => {
+        writeLog("stdout", line);
+        if (params.agentId === "openclaw" && !openclawFailureSignal) {
+          openclawFailureSignal = extractOpenClawFailureSignal(line);
+        }
+      },
+      onStderr: (line) => {
+        writeLog("stderr", line);
+        if (params.agentId === "openclaw" && !openclawFailureSignal) {
+          openclawFailureSignal = extractOpenClawFailureSignal(line);
+        }
+      },
       shouldTerminate: ({ stream, line }) => {
         if (stream !== "stdout" || !openclawCompletion) {
           return false;
@@ -371,9 +396,18 @@ export class AgentHost {
       successExitCodeOnEarlyTerminate: openclawCompletion ? 0 : undefined,
     });
 
+    let effectiveExitCode = runResult.exitCode;
+    if (params.agentId === "openclaw" && effectiveExitCode === 0 && openclawFailureSignal) {
+      writeLog(
+        "stderr",
+        `OpenClaw reported browser/tool failure, marking step as failed: ${openclawFailureSignal}`,
+      );
+      effectiveExitCode = 1;
+    }
+
     logStream.end();
 
-    const producedArtifacts = materializePlannedArtifacts(params.context, runResult.exitCode);
+    const producedArtifacts = materializePlannedArtifacts(params.context, effectiveExitCode);
 
     const stored = producedArtifacts.map((artifact) =>
       this.artifactStore.createArtifactFromFile({
@@ -402,7 +436,7 @@ export class AgentHost {
     }
 
     return {
-      exitCode: runResult.exitCode,
+      exitCode: effectiveExitCode,
       artifactIds: stored.map((artifact) => artifact.id),
     };
   }
