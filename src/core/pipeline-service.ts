@@ -18,7 +18,7 @@ export class PipelineService {
         throw new Error(`Unknown agentId: ${node.agentId}`);
       }
 
-      const needsGoal = true;
+      const needsGoal = node.agentId !== "loop";
       if (needsGoal && !(node.goal ?? "").trim()) {
         throw new Error(`Node ${node.id} must define goal`);
       }
