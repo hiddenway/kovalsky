@@ -1625,11 +1625,31 @@ export class RunService {
       ? { ...(config.browser as Record<string, unknown>) }
       : {};
 
+    const preferredDefaultProfile = this.resolveDefaultOpenClawBrowserProfile().trim();
     const currentDefaultProfile = typeof browser.defaultProfile === "string"
       ? browser.defaultProfile.trim()
       : "";
-    if (!currentDefaultProfile) {
-      browser.defaultProfile = this.resolveDefaultOpenClawBrowserProfile();
+    const normalizedCurrent = currentDefaultProfile.toLowerCase();
+    const shouldApplyPreferred = !currentDefaultProfile || normalizedCurrent === "chrome";
+    if (shouldApplyPreferred && preferredDefaultProfile) {
+      browser.defaultProfile = preferredDefaultProfile;
+    }
+
+    const normalizedEffective = typeof browser.defaultProfile === "string"
+      ? browser.defaultProfile.trim().toLowerCase()
+      : "";
+    if (normalizedEffective === "openclaw") {
+      const profiles = (browser.profiles && typeof browser.profiles === "object")
+        ? { ...(browser.profiles as Record<string, unknown>) }
+        : {};
+      const chromeProfile = (profiles.chrome && typeof profiles.chrome === "object")
+        ? { ...(profiles.chrome as Record<string, unknown>) }
+        : null;
+      if (chromeProfile && "cdpUrl" in chromeProfile) {
+        delete chromeProfile.cdpUrl;
+        profiles.chrome = chromeProfile;
+      }
+      browser.profiles = profiles;
     }
 
     config.browser = browser;
