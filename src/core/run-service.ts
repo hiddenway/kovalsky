@@ -1085,8 +1085,22 @@ export class RunService {
         },
       });
 
-      const decision = this.extractModelRerunDecision(report);
-      const cleaned = this.cleanReportReply(report);
+      let decision = this.extractModelRerunDecision(report);
+      let cleaned = this.cleanReportReply(report);
+      if (node.agentId === "openclaw") {
+        const actionRequested = this.isImmediateExecutionRequest(input.prompt);
+        const onboardingReply = this.isLikelyOnboardingReply(cleaned);
+        if (actionRequested && decision !== "rerun") {
+          decision = "rerun";
+          if (!cleaned || onboardingReply) {
+            cleaned = this.isLikelyRussianText(input.prompt)
+              ? "Принял. Запускаю выполнение запроса сейчас."
+              : "Understood. Starting execution now.";
+          }
+        } else if (onboardingReply) {
+          cleaned = "";
+        }
+      }
       if (cleaned) {
         return this.applyImmediateFollowupPolicy(input.prompt, {
           reply: cleaned,
@@ -1180,6 +1194,29 @@ export class RunService {
 
   private isLikelyRussianText(input: string): boolean {
     return /[А-Яа-яЁё]/.test(input);
+  }
+
+  private isImmediateExecutionRequest(prompt: string): boolean {
+    const normalized = prompt.trim().toLowerCase();
+    if (!normalized) {
+      return false;
+    }
+
+    if (normalized.endsWith("?") || /^(how|what|why|when|where|who|как|что|почему|когда|где|кто|зачем)\b/i.test(normalized)) {
+      return false;
+    }
+
+    return /(open|visit|browse|collect|send|write|create|update|run|execute|search|check|scrape|publish|deploy|открой|собери|отправ|запусти|выполни|сделай|проверь|найди|собирай|просматривай|опубликуй)/i
+      .test(normalized);
+  }
+
+  private isLikelyOnboardingReply(text: string): boolean {
+    const normalized = text.trim().toLowerCase();
+    if (!normalized) {
+      return false;
+    }
+    return /(who am i|who are you|what should i be called|what kind of.?creature|signature emoji|vibe\?|quick setup so i can work smoothly|then i can start your .* flow|как мне тебя называть|кто я|кто ты|выбери имя|подпись эмодзи|вайб)/i
+      .test(normalized);
   }
 
   private buildStopServerOnlyGoal(existingGoal: string, prompt: string): string {
@@ -2104,6 +2141,7 @@ export class RunService {
       .filter((line) => !/^kovalsky_decision:/i.test(line))
       .filter((line) => !/^answer directly and naturally like an assistant/i.test(line))
       .filter((line) => !/^if data is insufficient, ask one concise clarifying question/i.test(line))
+      .filter((line) => !/(who am i|who are you|what should i be called|what kind of.?creature|signature emoji|vibe\?|quick setup so i can work smoothly|как мне тебя называть|кто я|кто ты|выбери имя|подпись эмодзи|вайб)/i.test(line))
       .filter((line) => !this.looksLikeCodeLine(line));
 
     if (lines.length === 0) {
@@ -2176,6 +2214,7 @@ export class RunService {
       .filter((line) => !/^at the very end add one strict machine-readable line:/i.test(line))
       .filter((line) => !/^use rerun only when the user clearly asks to perform edits\/actions now/i.test(line))
       .filter((line) => !/^if data is insufficient, ask one concise clarifying question/i.test(line))
+      .filter((line) => !/(who am i|who are you|what should i be called|what kind of.?creature|signature emoji|vibe\?|quick setup so i can work smoothly|как мне тебя называть|кто я|кто ты|выбери имя|подпись эмодзи|вайб)/i.test(line))
       .join("\n")
       .replace(/^Post-step report:\s*/i, "")
       .trim();

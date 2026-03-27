@@ -471,6 +471,8 @@ function buildReportMessage(ctx: StepExecutionContext): string {
     lines.push("Do not repeat or quote previous answers verbatim unless the user explicitly asks.");
     lines.push("If user asks to perform actions now, do not claim inability to execute.");
     lines.push("State brief intent and let decision line control rerun execution.");
+    lines.push("Do NOT ask onboarding/profile/persona questions.");
+    lines.push("Never ask for name, identity, vibe, creature type, or signature emoji.");
   }
   if (urlCandidates.length > 0) {
     lines.push(`Resolved URL candidates: ${urlCandidates.slice(0, 8).join(", ")}`);
