@@ -341,6 +341,14 @@ function requiresWorkspaceRelativeProjectPath(ctx: StepExecutionContext): boolea
   return /(^|[\s"'`])\/projects?(?=[/\s"'`]|$)/i.test(combined);
 }
 
+function hasTelegramBotToken(text: string): boolean {
+  return /\b\d{7,}:[A-Za-z0-9_-]{20,}\b/.test(text);
+}
+
+function hasTelegramChatId(text: string): boolean {
+  return /\b(?:tg\s*id|chat\s*id|telegram\s*id|id)\s*[:=]?\s*-?\d{6,}\b/i.test(text) || /\b-?\d{7,}\b/.test(text);
+}
+
 function buildAgentMessage(ctx: StepExecutionContext): string {
   const lines: string[] = [];
   const persistBackgroundProcesses = ctx.settings.persistBackgroundProcesses === true;
@@ -356,6 +364,17 @@ function buildAgentMessage(ctx: StepExecutionContext): string {
   if (ctx.plannedNode.handoffContext?.trim()) {
     lines.push(`Planner handoff context: ${ctx.plannedNode.handoffContext.trim()}`);
   }
+  const combinedTaskText = [ctx.goal, ctx.plannedNode.goalAddendum ?? "", ctx.plannedNode.handoffContext ?? ""].join("\n");
+  const hasTgTokenInTask = hasTelegramBotToken(combinedTaskText);
+  const hasTgIdInTask = hasTelegramChatId(combinedTaskText);
+  if (hasTgTokenInTask && hasTgIdInTask) {
+    lines.push("Execution policy: user already provided Telegram bot token and chat/TG id in the task.");
+    lines.push("Do not ask for extra confirmations or gateway/bot setup; execute immediately.");
+    lines.push("Use the provided token directly for Telegram Bot API calls (https://api.telegram.org/bot<TOKEN>/sendMessage).");
+    lines.push("If sending fails, report exact API error and continue with collected summary in step output.");
+  }
+  lines.push("When user request is imperative and actionable, execute immediately instead of asking procedural/setup questions.");
+  lines.push("Do not request persona/onboarding info or repeated confirmations during execution.");
   if (useWorkspaceRelativeProjectPath) {
     lines.push("Path policy: never create or use root-level /project or /projects.");
     lines.push("When task text references /project or /projects, interpret it as ./project inside current workspace.");
