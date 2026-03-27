@@ -16,7 +16,7 @@ import { AgentsLibrary } from "@/components/builder/agents-library";
 import { InspectorPanel } from "@/components/builder/inspector-panel";
 import { TopBar } from "@/components/builder/top-bar";
 import { getApiClient } from "@/lib/api/client";
-import { AGENT_DEFINITIONS, isTriggerAgent } from "@/lib/agents";
+import { AGENT_DEFINITIONS, isLoopAgent, isTriggerAgent } from "@/lib/agents";
 import { isUserCanceledFileDialog, savePipelineToFile } from "@/lib/pipeline-file-save";
 import type { AgentDefinition } from "@/lib/types";
 import { usePipelineStore } from "@/stores/pipeline-store";
@@ -328,13 +328,20 @@ function CanvasBuilderInner(): React.JSX.Element {
           comments,
           results,
         });
+        const loopStatusLabel = isLoopAgent(node.data.agentId)
+          ? (step.status === "canceled"
+              ? "paused"
+              : step.status === "success" && step.logs.some((line) => /loop status:\s*waiting/i.test(toHumanLogLine(line)))
+                ? "waiting"
+                : step.status)
+          : undefined;
 
         return {
           ...node,
           data: {
             ...node.data,
             runtimeStatus: step.status,
-            runtimeStatusLabel: undefined,
+            runtimeStatusLabel: loopStatusLabel,
             handoff: {
               status: step.status,
               summary: step.summary ?? "No summary yet.",

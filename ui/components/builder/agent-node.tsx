@@ -56,6 +56,11 @@ function AgentNode({ data, selected = false }: AgentNodeProps): React.JSX.Elemen
   const customName = data.customName?.trim() ?? "";
   const status = data.runtimeStatus ?? data.handoff?.status;
   const statusLabel = data.runtimeStatusLabel ?? (status ? (STATUS_LABELS[status] ?? status) : "");
+  const statusStyleKey = statusLabel.toLowerCase() === "waiting"
+    ? "running"
+    : statusLabel.toLowerCase() === "paused"
+      ? "canceled"
+      : status;
   const triggerMode = isTriggerAgent(data.agentId) ? readTriggerLifecycleStatus(data.settings) : null;
   const showGoal = !isLoopAgent(data.agentId);
   const leftPosition = "left" as never;
@@ -87,7 +92,7 @@ function AgentNode({ data, selected = false }: AgentNodeProps): React.JSX.Elemen
             <span
               className={cn(
                 "rounded border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
-                STATUS_STYLES[status],
+                statusStyleKey ? STATUS_STYLES[statusStyleKey] : "",
               )}
             >
               {statusLabel}

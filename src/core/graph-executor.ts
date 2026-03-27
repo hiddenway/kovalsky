@@ -137,6 +137,17 @@ export class GraphExecutor {
       incomingCount.set(edge.target, (incomingCount.get(edge.target) ?? 0) + 1);
     }
 
+    const defaultLoopTargetNodeIds = [...incomingCount.entries()]
+      .filter(([, count]) => count === 0)
+      .map(([nodeId]) => nodeId)
+      .filter((nodeId) => {
+        const node = nodeById.get(nodeId);
+        if (!node) {
+          return false;
+        }
+        return node.agentId !== "loop" && node.agentId !== "trigger";
+      });
+
     const ready: string[] = [...incomingCount.entries()]
       .filter(([, count]) => count === 0)
       .map(([nodeId]) => nodeId);
@@ -232,7 +243,10 @@ export class GraphExecutor {
         if (node.agentId === "loop") {
           const delaySeconds = this.resolveLoopDelaySeconds(node.settings ?? {});
           const carryContext = this.resolveLoopCarryContext(node.settings ?? {});
-          const targetNodeIds = [...new Set(loopTargetsByNode.get(nodeId) ?? [])];
+          const explicitTargets = [...new Set(loopTargetsByNode.get(nodeId) ?? [])];
+          const targetNodeIds = explicitTargets.length > 0 ? explicitTargets : defaultLoopTargetNodeIds;
+          this.artifactStore.ensureStepDirs(runId, stepRunId);
+          const loopStepLogPath = this.artifactStore.getStepLogPath(runId, stepRunId);
 
           statusByNode.set(nodeId, "success");
           this.db.updateStepRunStatus(stepRunId, "success", 0, null);
@@ -248,6 +262,7 @@ export class GraphExecutor {
           });
 
           if (targetNodeIds.length === 0) {
+            this.appendStepLogLine(loopStepLogPath, "stdout", "Loop status: success (no restart targets).");
             this.writeNodeMessage(
               runId,
               nodeId,
@@ -265,14 +280,20 @@ export class GraphExecutor {
               delaySeconds,
               carryContext,
             };
+            this.appendStepLogLine(
+              loopStepLogPath,
+              "stdout",
+              `Loop status: waiting (${delaySeconds}s). Targets: ${targetNodeIds.join(", ")}.`,
+            );
             this.writeNodeMessage(
               runId,
               nodeId,
               "system",
               "run",
-              `Loop requested next cycle in ${delaySeconds}s. Targets: ${targetNodeIds.join(", ")}. Carry context: ${carryContext ? "yes" : "no"}.`,
+              `Loop requested next cycle in ${delaySeconds}s. Targets: ${targetNodeIds.join(", ")}.${explicitTargets.length === 0 ? " Mode: entrypoint fallback (no explicit loop edge)." : ""} Carry context: ${carryContext ? "yes" : "no"}.`,
             );
           } else {
+            this.appendStepLogLine(loopStepLogPath, "stdout", "Loop status: success (request ignored: continuation already scheduled).");
             this.writeNodeMessage(
               runId,
               nodeId,
@@ -787,6 +808,14 @@ export class GraphExecutor {
     }
 
     return lines.join("\n");
+  }
+
+  private appendStepLogLine(stepLogPath: string, stream: "stdout" | "stderr", line: string): void {
+    try {
+      fs.appendFileSync(stepLogPath, `[${stream}] ${line}\n`, "utf8");
+    } catch {
+      // ignore logging failures for loop control-only steps
+    }
   }
 
   private readStepLogTail(stepLogPath: string, maxLines: number): string[] {
