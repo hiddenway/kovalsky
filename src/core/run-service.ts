@@ -1639,15 +1639,14 @@ export class RunService {
       ? browser.defaultProfile.trim().toLowerCase()
       : "";
     if (normalizedEffective === "openclaw") {
+      if ("cdpUrl" in browser) {
+        delete browser.cdpUrl;
+      }
       const profiles = (browser.profiles && typeof browser.profiles === "object")
         ? { ...(browser.profiles as Record<string, unknown>) }
         : {};
-      const chromeProfile = (profiles.chrome && typeof profiles.chrome === "object")
-        ? { ...(profiles.chrome as Record<string, unknown>) }
-        : null;
-      if (chromeProfile && "cdpUrl" in chromeProfile) {
-        delete chromeProfile.cdpUrl;
-        profiles.chrome = chromeProfile;
+      if ("chrome" in profiles) {
+        delete profiles.chrome;
       }
       browser.profiles = profiles;
     }

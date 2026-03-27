@@ -773,26 +773,31 @@ function applyWorkspaceOverrideToState(input: {
     config.gateway = gateway;
   }
 
-  const browserDefaultProfile = (input.browserDefaultProfile ?? "").trim();
-  if (browserDefaultProfile) {
-    const browser = isObjectRecord(config.browser) ? { ...config.browser } : {};
-    browser.defaultProfile = browserDefaultProfile;
-    if (browserDefaultProfile.toLowerCase() === "openclaw") {
-      if ("cdpUrl" in browser) {
-        delete browser.cdpUrl;
-      }
-      if (isObjectRecord(browser.profiles)) {
-        const profiles = { ...browser.profiles };
-        const chromeProfile = isObjectRecord(profiles.chrome) ? { ...profiles.chrome } : null;
-        if (chromeProfile && "cdpUrl" in chromeProfile) {
-          delete chromeProfile.cdpUrl;
-          profiles.chrome = chromeProfile;
-        }
-        browser.profiles = profiles;
-      }
-    }
-    config.browser = browser;
+  const browser = isObjectRecord(config.browser) ? { ...config.browser } : {};
+  const requestedDefaultProfile = (input.browserDefaultProfile ?? "").trim();
+  const currentDefaultProfile = typeof browser.defaultProfile === "string"
+    ? browser.defaultProfile.trim()
+    : "";
+  const normalizedCurrentDefault = currentDefaultProfile.toLowerCase();
+  const effectiveDefaultProfile = requestedDefaultProfile
+    || (!currentDefaultProfile || normalizedCurrentDefault === "chrome" ? "openclaw" : currentDefaultProfile);
+  if (effectiveDefaultProfile) {
+    browser.defaultProfile = effectiveDefaultProfile;
   }
+
+  if (effectiveDefaultProfile.toLowerCase() === "openclaw") {
+    if ("cdpUrl" in browser) {
+      delete browser.cdpUrl;
+    }
+    const profiles = isObjectRecord(browser.profiles)
+      ? { ...browser.profiles }
+      : {};
+    if ("chrome" in profiles) {
+      delete profiles.chrome;
+    }
+    browser.profiles = profiles;
+  }
+  config.browser = browser;
 
   writeJsonObject(configPath, config);
 }
@@ -889,7 +894,7 @@ export const openclawPlugin: AgentPlugin = {
       const command = typeof ctx.settings.command === "string" ? ctx.settings.command : "openclaw";
       ensureWorkspaceMemoryScaffold(ctx.workspacePath);
       const rootArgs: string[] = [];
-      const useIsolatedState = ctx.settings.useIsolatedState !== false;
+      const useIsolatedState = ctx.settings.useIsolatedState === true;
       const sharedStateDir = (ctx.env.OPENCLAW_STATE_DIR ?? "").trim();
       const statePrep = useIsolatedState
         ? prepareIsolatedStateDir(ctx)
