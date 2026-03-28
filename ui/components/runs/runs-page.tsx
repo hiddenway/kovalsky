@@ -124,11 +124,11 @@ export function RunsPage(): React.JSX.Element {
                   }
                   return rightAt.localeCompare(leftAt);
                 });
-              const runStatusLabel = runningNow.length > 0 && record.run.status !== "canceled" ? "running" : record.run.status;
+              const runStatusLabel = runningNow.length > 0 ? "running" : record.run.status;
               const isCancelable =
                 record.run.status === "queued"
                 || record.run.status === "running"
-                || (runningNow.length > 0 && record.run.status !== "canceled");
+                || runningNow.length > 0;
               const openStepId = openLogsByRun[record.run.id] ?? null;
               const selectedStep = steps.find((item) => item.step.stepId === openStepId) ?? null;
               return (
@@ -153,11 +153,9 @@ export function RunsPage(): React.JSX.Element {
                       >
                         Open
                       </Link>
-                      {isCancelable ? (
-                        <Button type="button" variant="danger" onClick={() => cancelRun(record.run.id)}>
-                          Cancel
-                        </Button>
-                      ) : null}
+                      <Button type="button" variant="danger" onClick={() => cancelRun(record.run.id)} disabled={!isCancelable}>
+                        Cancel
+                      </Button>
                     </div>
                   </div>
 
