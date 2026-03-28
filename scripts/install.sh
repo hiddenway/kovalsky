@@ -115,6 +115,11 @@ Commands:
   update     Pull latest code and install dependencies
   path       Print install directory
   help       Show this help
+
+Environment overrides:
+  KOVALSKY_BACKEND_PORT   Backend port (default: 18787)
+  KOVALSKY_UI_PORT        UI port (default: 3764)
+  KOVALSKY_NO_AUTO_OPEN   Set to 1 to disable automatic browser open
 USAGE
 }
 
@@ -129,24 +134,83 @@ if [[ $# -gt 0 ]]; then
   shift
 fi
 
+DEFAULT_BACKEND_PORT="${KOVALSKY_BACKEND_PORT_DEFAULT:-18787}"
+DEFAULT_UI_PORT="${KOVALSKY_UI_PORT_DEFAULT:-3764}"
+BACKEND_HOST="${KOVALSKY_HOST:-127.0.0.1}"
+UI_HOST="${KOVALSKY_UI_HOST:-127.0.0.1}"
+
+resolve_backend_port() {
+  printf '%s' "${KOVALSKY_PORT:-${KOVALSKY_BACKEND_PORT:-$DEFAULT_BACKEND_PORT}}"
+}
+
+resolve_ui_port() {
+  printf '%s' "${PORT:-${KOVALSKY_UI_PORT:-$DEFAULT_UI_PORT}}"
+}
+
+open_browser_url() {
+  local url="$1"
+  if [[ "${KOVALSKY_NO_AUTO_OPEN:-0}" == "1" ]]; then
+    return 0
+  fi
+  if command -v open >/dev/null 2>&1; then
+    open "$url" >/dev/null 2>&1 || true
+    return 0
+  fi
+  if command -v xdg-open >/dev/null 2>&1; then
+    xdg-open "$url" >/dev/null 2>&1 || true
+    return 0
+  fi
+  if command -v powershell.exe >/dev/null 2>&1; then
+    powershell.exe -NoProfile -Command "Start-Process '$url'" >/dev/null 2>&1 || true
+    return 0
+  fi
+  return 1
+}
+
 case "$cmd" in
   start)
     cd "$INSTALL_DIR"
-    pnpm run dev:watch &
+    backend_port="$(resolve_backend_port)"
+    ui_port="$(resolve_ui_port)"
+    backend_url="http://${BACKEND_HOST}:${backend_port}"
+    ui_url="http://${UI_HOST}:${ui_port}"
+    ui_open_url="${ui_url}/pipelines"
+    backend_allowed_origins="${KOVALSKY_ALLOWED_ORIGINS:-http://localhost:${ui_port},http://127.0.0.1:${ui_port},${ui_url}}"
+
+    printf '[kovalsky] Backend: %s\n' "$backend_url"
+    printf '[kovalsky] UI: %s\n' "$ui_open_url"
+    if [[ "${KOVALSKY_NO_AUTO_OPEN:-0}" != "1" ]]; then
+      printf '[kovalsky] Opening browser...\n'
+    fi
+
+    KOVALSKY_PORT="$backend_port" KOVALSKY_ALLOWED_ORIGINS="$backend_allowed_origins" pnpm run dev:watch &
     backend_pid="$!"
     cleanup() {
       kill "$backend_pid" >/dev/null 2>&1 || true
     }
     trap cleanup EXIT INT TERM
-    pnpm --dir ui run dev "$@"
+    (
+      sleep 2
+      open_browser_url "$ui_open_url" || true
+    ) &
+    NEXT_PUBLIC_KOVALSKY_BACKEND_URL="$backend_url" PORT="$ui_port" pnpm --dir ui run dev "$@"
     ;;
   backend)
     cd "$INSTALL_DIR"
-    exec pnpm run dev:watch "$@"
+    backend_port="$(resolve_backend_port)"
+    ui_port="$(resolve_ui_port)"
+    ui_url="http://${UI_HOST}:${ui_port}"
+    backend_allowed_origins="${KOVALSKY_ALLOWED_ORIGINS:-http://localhost:${ui_port},http://127.0.0.1:${ui_port},${ui_url}}"
+    printf '[kovalsky] Backend: http://%s:%s\n' "$BACKEND_HOST" "$backend_port"
+    exec KOVALSKY_PORT="$backend_port" KOVALSKY_ALLOWED_ORIGINS="$backend_allowed_origins" pnpm run dev:watch "$@"
     ;;
   ui)
     cd "$INSTALL_DIR"
-    exec pnpm --dir ui run dev "$@"
+    backend_port="$(resolve_backend_port)"
+    ui_port="$(resolve_ui_port)"
+    backend_url="http://${BACKEND_HOST}:${backend_port}"
+    printf '[kovalsky] UI: http://%s:%s/pipelines\n' "$UI_HOST" "$ui_port"
+    exec NEXT_PUBLIC_KOVALSKY_BACKEND_URL="$backend_url" PORT="$ui_port" pnpm --dir ui run dev "$@"
     ;;
   update)
     need_cmd git

@@ -176,6 +176,12 @@ After install:
 kovalsky start
 ```
 
+`kovalsky start` uses rare default ports and prints them before startup:
+- Backend: `http://127.0.0.1:18787`
+- UI: `http://127.0.0.1:3764/pipelines`
+
+It also opens the UI URL in your browser automatically (disable with `KOVALSKY_NO_AUTO_OPEN=1`).
+
 Optional uninstall:
 
 ```bash
