@@ -341,12 +341,25 @@ function requiresWorkspaceRelativeProjectPath(ctx: StepExecutionContext): boolea
   return /(^|[\s"'`])\/projects?(?=[/\s"'`]|$)/i.test(combined);
 }
 
+function containsTelegramBotToken(input: string): boolean {
+  return /\b\d{6,12}:[A-Za-z0-9_-]{20,}\b/.test(input);
+}
+
+function isTelegramTask(input: string): boolean {
+  return /(telegram|телеграм|телега|tg\b|бота?\b)/i.test(input);
+}
+
 function buildAgentMessage(ctx: StepExecutionContext): string {
   const lines: string[] = [];
   const persistBackgroundProcesses = ctx.settings.persistBackgroundProcesses === true;
   const allowServerStopActions = shouldAllowServerStopActions(ctx);
   const requireBrowserChecks = shouldRequireBrowserChecks(ctx);
   const useWorkspaceRelativeProjectPath = requiresWorkspaceRelativeProjectPath(ctx);
+  const combinedTaskText = [
+    ctx.goal,
+    ctx.plannedNode.goalAddendum ?? "",
+    ctx.plannedNode.handoffContext ?? "",
+  ].join("\n");
   if (ctx.goal.trim()) {
     lines.push(ctx.goal.trim());
   }
@@ -430,6 +443,12 @@ function buildAgentMessage(ctx: StepExecutionContext): string {
   } else {
     lines.push("Do not launch interactive browser sessions unless the task explicitly asks for browser/UI checks.");
   }
+  if (isTelegramTask(combinedTaskText) || containsTelegramBotToken(combinedTaskText)) {
+    lines.push("Telegram policy: when bot token and chat/user id are provided in task text, use them directly.");
+    lines.push("Use Telegram Bot HTTP API (sendMessage/sendPhoto/etc.) via HTTPS call from this step.");
+    lines.push("Do not claim that OpenClaw accountId or pre-connected Telegram integration is required for this path.");
+    lines.push("If Telegram API call fails, retry once with corrected payload and report exact API error body.");
+  }
   return lines.join("\n");
 }
 
@@ -477,6 +496,12 @@ function buildReportMessage(ctx: StepExecutionContext): string {
     lines.push("State brief intent and let decision line control rerun execution.");
     lines.push("Do NOT ask onboarding/profile/persona questions.");
     lines.push("Never ask for name, identity, vibe, creature type, or signature emoji.");
+    const followupText = ctx.reportContext.followupPrompt.trim();
+    if (isTelegramTask(followupText) || containsTelegramBotToken(followupText)) {
+      lines.push("If request includes Telegram bot token/chat id, treat it as executable.");
+      lines.push("Do not answer that Telegram requires OpenClaw accountId/integration for this case.");
+      lines.push("Prefer rerun decision for direct execution requests with provided Telegram credentials.");
+    }
   }
   if (urlCandidates.length > 0) {
     lines.push(`Resolved URL candidates: ${urlCandidates.slice(0, 8).join(", ")}`);

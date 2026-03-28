@@ -1131,9 +1131,10 @@ export class RunService {
       if (node.agentId === "openclaw") {
         const actionRequested = this.isImmediateExecutionRequest(input.prompt);
         const onboardingReply = this.isLikelyOnboardingReply(cleaned);
-        if (actionRequested && decision !== "rerun") {
+        const capabilityDenialReply = this.isLikelyCapabilityDenialReply(cleaned);
+        if (actionRequested && (decision !== "rerun" || capabilityDenialReply)) {
           decision = "rerun";
-          if (!cleaned || onboardingReply) {
+          if (!cleaned || onboardingReply || capabilityDenialReply) {
             cleaned = this.isLikelyRussianText(input.prompt)
               ? "Принял. Запускаю выполнение запроса сейчас."
               : "Understood. Starting execution now.";
@@ -1257,6 +1258,16 @@ export class RunService {
       return false;
     }
     return /(who am i|who are you|what should i be called|what kind of.?creature|signature emoji|vibe\?|quick setup so i can work smoothly|then i can start your .* flow|как мне тебя называть|кто я|кто ты|выбери имя|подпись эмодзи|вайб)/i
+      .test(normalized);
+  }
+
+  private isLikelyCapabilityDenialReply(text: string): boolean {
+    const normalized = text.trim().toLowerCase();
+    if (!normalized) {
+      return false;
+    }
+
+    return /(cannot|can't|unable|impossible|not possible|невозможно|не могу|не получится|нельзя|requires .*accountid|need .*accountid|бот.*должен.*подключ|telegram.*integration required|openclaw.*accountid)/i
       .test(normalized);
   }
 
