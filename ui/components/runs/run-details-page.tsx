@@ -142,8 +142,9 @@ export function RunDetailsPage({ runId }: Props): React.JSX.Element {
     && step.status === "success"
     && step.logs.some((line) => /loop status:\s*waiting/i.test(line)),
   );
-  const effectiveRunStatus = hasLoopWaitingStep && record.run.status !== "canceled" ? "running" : record.run.status;
-  const isCancelable = record.run.status === "queued" || record.run.status === "running" || hasLoopWaitingStep;
+  const runIsActive = record.run.status === "queued" || record.run.status === "running";
+  const effectiveRunStatus = runIsActive && hasLoopWaitingStep ? "running" : record.run.status;
+  const isCancelable = runIsActive;
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100">

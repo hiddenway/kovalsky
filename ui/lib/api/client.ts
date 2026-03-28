@@ -38,13 +38,31 @@ class RestKovalskyApiClient implements KovalskyApiClient {
     return Array.from(new Set([plain, prefixed]));
   }
 
+  private async shouldRetryAlternatePathOn404(response: Response): Promise<boolean> {
+    if (response.status !== 404) {
+      return false;
+    }
+
+    const body = (await response.clone().text().catch(() => "")).trim();
+    if (!body) {
+      return true;
+    }
+
+    // Fastify unknown-route payload: {"message":"Route METHOD:/path not found", ...}
+    if (body.includes("Route ") && body.toLowerCase().includes(" not found")) {
+      return true;
+    }
+
+    return false;
+  }
+
   private async fetchWithFallback(path: string, init?: RequestInit): Promise<Response> {
     let last404: Response | null = null;
     const requestInit = await this.withAuth(init);
 
     for (const candidatePath of this.candidatePaths(path)) {
       const response = await fetch(this.buildUrl(candidatePath), requestInit);
-      if (response.status === 404) {
+      if (await this.shouldRetryAlternatePathOn404(response)) {
         last404 = response;
         continue;
       }

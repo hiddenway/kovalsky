@@ -255,7 +255,7 @@ type RunState = {
   init: () => void;
   startRun: (pipeline: Pipeline) => Promise<string>;
   attachExternalRun: (runId: string, pipeline: Pipeline) => void;
-  cancelRun: (runId: string) => void;
+  cancelRun: (runId: string) => Promise<boolean>;
   cancelRunsForPipeline: (pipelineId: string) => Promise<number>;
   retryFailedSteps: (runId: string) => Promise<string | null>;
   getRun: (runId: string) => RunRecord | null;
@@ -411,6 +411,7 @@ export const useRunStore = create<RunState>((set, get) => ({
         const controller = controllers.get(runId);
         while (true) {
           if (controller?.canceled) {
+            controller.canceled = false;
             await api.cancelRun(runId).catch(() => {
               return;
             });
@@ -495,6 +496,7 @@ export const useRunStore = create<RunState>((set, get) => ({
         const controller = controllers.get(runId);
         while (true) {
           if (controller?.canceled) {
+            controller.canceled = false;
             await api.cancelRun(runId).catch(() => {
               return;
             });
@@ -529,15 +531,21 @@ export const useRunStore = create<RunState>((set, get) => ({
       }
     })();
   },
-  cancelRun: (runId) => {
+  cancelRun: async (runId) => {
     const controller = controllers.get(runId);
     if (controller) {
       controller.canceled = true;
     }
 
-    void getApiClient().cancelRun(runId).catch(() => {
-      return;
-    });
+    const api = getApiClient();
+    try {
+      await api.cancelRun(runId);
+    } catch {
+      if (controller) {
+        controller.canceled = false;
+      }
+      return false;
+    }
 
     set((state) => {
       const records = state.records.map((record) =>
@@ -564,6 +572,8 @@ export const useRunStore = create<RunState>((set, get) => ({
       persist(records);
       return { records };
     });
+
+    return true;
   },
   cancelRunsForPipeline: async (pipelineId) => {
     const targets = get().records
@@ -571,11 +581,15 @@ export const useRunStore = create<RunState>((set, get) => ({
       .filter((record) => record.run.status === "queued" || record.run.status === "running")
       .map((record) => record.run.id);
 
+    let canceled = 0;
     for (const runId of targets) {
-      get().cancelRun(runId);
+      const ok = await get().cancelRun(runId);
+      if (ok) {
+        canceled += 1;
+      }
     }
 
-    return targets.length;
+    return canceled;
   },
   retryFailedSteps: async (runId) => {
     const record = get().records.find((item) => item.run.id === runId);
