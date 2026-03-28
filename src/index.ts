@@ -89,7 +89,7 @@ async function main(): Promise<void> {
     logger.warn("Gateway auth is disabled (KOVALSKY_DISABLE_AUTH=true)");
   }
 
-  await registerRoutes(app, {
+  const routesDeps = {
     version: "0.1.0",
     runsDir: config.runsDir,
     pluginRegistry,
@@ -101,7 +101,12 @@ async function main(): Promise<void> {
     eventBus,
     toolchainService,
     triggerService,
-  });
+  } as const;
+
+  await registerRoutes(app, routesDeps);
+  await app.register(async (prefixedApi) => {
+    await registerRoutes(prefixedApi, routesDeps);
+  }, { prefix: "/api" });
 
   app.addHook("onClose", async () => {
     db.close();
