@@ -8,6 +8,7 @@ BIN_DIR="${KOVALSKY_BIN_DIR:-$HOME/.local/bin}"
 SKIP_DEPS="${KOVALSKY_SKIP_INSTALL_DEPS:-0}"
 SKIP_BUILD="${KOVALSKY_SKIP_BUILD:-0}"
 FORCE_INSTALL="${KOVALSKY_FORCE_INSTALL:-0}"
+AUTO_CONFIGURE_PATH="${KOVALSKY_AUTO_CONFIGURE_PATH:-1}"
 
 log() {
   printf '[kovalsky-install] %s\n' "$*"
@@ -70,6 +71,49 @@ clone_or_update_repo() {
 
   log "Cloning $REPO_URL (branch: $BRANCH) to $INSTALL_DIR"
   git clone --branch "$BRANCH" --depth 1 "$REPO_URL" "$INSTALL_DIR"
+}
+
+ensure_path_in_shell_rc() {
+  if [[ "$AUTO_CONFIGURE_PATH" != "1" ]]; then
+    log "Skipping shell PATH auto-configuration (KOVALSKY_AUTO_CONFIGURE_PATH=$AUTO_CONFIGURE_PATH)."
+    return 0
+  fi
+
+  local shell_name rc_file marker_start marker_end export_line
+  shell_name="$(basename "${SHELL:-}")"
+  marker_start="# >>> kovalsky path >>>"
+  marker_end="# <<< kovalsky path <<<"
+  export_line="export PATH=\"$BIN_DIR:\$PATH\""
+
+  if [[ "$shell_name" == "zsh" ]]; then
+    rc_file="$HOME/.zshrc"
+  elif [[ "$shell_name" == "bash" ]]; then
+    if [[ -f "$HOME/.bashrc" || ! -f "$HOME/.bash_profile" ]]; then
+      rc_file="$HOME/.bashrc"
+    else
+      rc_file="$HOME/.bash_profile"
+    fi
+  else
+    log "Unknown shell '$shell_name'; skipping PATH auto-configuration."
+    return 0
+  fi
+
+  mkdir -p "$(dirname "$rc_file")"
+  if [[ ! -f "$rc_file" ]]; then
+    : > "$rc_file"
+  fi
+
+  if grep -Fq "$export_line" "$rc_file" || grep -Fq "$marker_start" "$rc_file"; then
+    log "PATH already configured in $rc_file"
+    return 0
+  fi
+
+  {
+    printf '\n%s\n' "$marker_start"
+    printf '%s\n' "$export_line"
+    printf '%s\n' "$marker_end"
+  } >> "$rc_file"
+  log "Added $BIN_DIR to PATH in $rc_file"
 }
 
 write_launcher() {
@@ -274,6 +318,7 @@ main() {
   fi
 
   write_launcher
+  ensure_path_in_shell_rc
   print_finish
 }
 
