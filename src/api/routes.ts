@@ -1,5 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
+import os from "node:os";
+import { spawnSync } from "node:child_process";
 import { z } from "zod";
 import type { FastifyInstance } from "fastify";
 import type { PluginRegistry } from "../plugins/registry";
@@ -117,6 +119,47 @@ const runListQuerySchema = z.object({
 
 export async function registerRoutes(app: FastifyInstance<any, any, any, any>, deps: RoutesDeps): Promise<void> {
   app.get("/health", async () => ({ ok: true, version: deps.version }));
+
+  app.get("/system/pick-workspace-directory", async (_request, reply) => {
+    if (process.platform === "darwin") {
+      const script = "POSIX path of (choose folder with prompt \"Select workspace folder\")";
+      const result = spawnSync("osascript", ["-e", script], {
+        encoding: "utf8",
+      });
+
+      if (result.status !== 0) {
+        const stderr = (result.stderr ?? "").trim();
+        if (/User canceled|cancelled|canceled/i.test(stderr)) {
+          return { path: null };
+        }
+        return reply.code(500).send({
+          error: stderr || "Failed to open system folder picker.",
+        });
+      }
+
+      const pickedPath = (result.stdout ?? "").trim();
+      if (!pickedPath) {
+        return { path: null };
+      }
+      return { path: pickedPath };
+    }
+
+    if (process.platform === "win32") {
+      return reply.code(501).send({
+        error: "System folder picker is not implemented for Windows in web mode yet.",
+      });
+    }
+
+    if (process.platform === "linux") {
+      return reply.code(501).send({
+        error: "System folder picker is not implemented for Linux in web mode yet.",
+      });
+    }
+
+    return reply.code(501).send({
+      error: `System folder picker is not supported on this platform (${os.platform()}).`,
+    });
+  });
 
   app.get("/agents", async () => {
     return deps.pluginRegistry.listManifests().map((manifest) => ({

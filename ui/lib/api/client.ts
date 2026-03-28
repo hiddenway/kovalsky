@@ -507,6 +507,19 @@ class RestKovalskyApiClient implements KovalskyApiClient {
     return (await response.json()) as Awaited<ReturnType<KovalskyApiClient["updateSettings"]>>;
   }
 
+  async pickWorkspaceDirectory() {
+    const response = await this.fetchWithFallback("/system/pick-workspace-directory", {
+      method: "GET",
+      cache: "no-store",
+    });
+
+    if (!response.ok) {
+      await this.throwHttpError(response, "Failed to pick workspace directory");
+    }
+
+    return (await response.json()) as Awaited<ReturnType<KovalskyApiClient["pickWorkspaceDirectory"]>>;
+  }
+
   async generateTrigger(input: {
     nodeId: string;
     goal: string;

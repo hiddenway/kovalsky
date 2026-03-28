@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { getApiClient, resetApiClient } from "@/lib/api/client";
-import type { CodexAuthStatus, ToolchainBootstrapStatus } from "@/lib/api/contracts";
+import type { CodexAuthStatus, KovalskyApiClient, ToolchainBootstrapStatus } from "@/lib/api/contracts";
 import { loadPreferences, savePreferences } from "@/lib/local-state";
 import { usePipelineStore } from "@/stores/pipeline-store";
 import { useRunStore } from "@/stores/run-store";
@@ -85,7 +85,17 @@ async function ensureGatewayAvailable(baseUrl: string): Promise<void> {
   }
 }
 
-async function pickWorkspacePath(): Promise<string | null> {
+async function pickWorkspacePath(api: KovalskyApiClient): Promise<string | null> {
+  try {
+    const picked = await api.pickWorkspaceDirectory();
+    const absolutePath = picked.path?.trim();
+    if (absolutePath) {
+      return absolutePath;
+    }
+  } catch {
+    // Fallback to browser/electron specific pickers below.
+  }
+
   const withPicker = window as DirectoryPickerWindow;
   if (typeof withPicker.kovalskyDesktop?.pickWorkspaceDirectory === "function") {
     try {
@@ -160,7 +170,7 @@ export function PipelinesPage(): React.JSX.Element {
   const openBuilderForPipeline = async (pipelineId: string, currentWorkspacePath?: string): Promise<void> => {
     const hasWorkspace = Boolean(currentWorkspacePath?.trim());
     if (!hasWorkspace) {
-      const workspacePath = await pickWorkspacePath();
+      const workspacePath = await pickWorkspacePath(api);
       if (!workspacePath) {
         pushToast({
           title: "Workspace is required",
@@ -589,7 +599,7 @@ export function PipelinesPage(): React.JSX.Element {
             <Button
               type="button"
               onClick={async () => {
-                const workspacePath = await pickWorkspacePath();
+                const workspacePath = await pickWorkspacePath(api);
                 if (workspacePath === null) {
                   return;
                 }

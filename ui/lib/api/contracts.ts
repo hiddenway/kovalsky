@@ -299,6 +299,7 @@ export interface KovalskyApiClient {
   getCodexAuthStatus(): Promise<CodexAuthStatus>;
   getSettings(): Promise<GatewaySettings>;
   updateSettings(input: GatewaySettingsPatch): Promise<GatewaySettings>;
+  pickWorkspaceDirectory(): Promise<{ path: string | null }>;
   generateTrigger(input: {
     nodeId: string;
     goal: string;
