@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Kovalsky — Open-Source Platform for AI Employees</title>
+    <meta
+      name="description"
+      content="Kovalsky is an open-source platform for building and running AI employees through workflows, not a single generic assistant."
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="bg-grid" aria-hidden="true"></div>
+    <div class="bg-glow glow-a" aria-hidden="true"></div>
+    <div class="bg-glow glow-b" aria-hidden="true"></div>
+
+    <nav class="nav">
+      <div class="container nav-inner">
+        <a class="brand" href="#top">
+          <span class="brand-mark">K</span>
+          <span>Kovalsky</span>
+        </a>
+        <button class="mobile-toggle" id="mobile-toggle" aria-label="Open menu">☰</button>
+        <div class="links" id="nav-links">
+          <a href="#install">Get Started</a>
+          <a href="#features">Why Kovalsky</a>
+          <a href="#flow">How It Works</a>
+          <a href="#cta">Start Now</a>
+        </div>
+      </div>
+    </nav>
+
+    <header class="hero container" id="top">
+      <div class="hero-copy reveal">
+        <p class="badge">
+          <span class="badge-dot"></span>
+          Open Source • Workflow-Driven • Team of AI Employees
+        </p>
+        <h1>
+          Run an AI team
+          <span class="accent">with a single prompt.</span>
+        </h1>
+        <p class="lead">
+          Kovalsky is an open-source platform for building and running AI employees.
+          Instead of chatting with one generic assistant, you coordinate a team of specialized agents through workflows.
+        </p>
+        <div class="hero-actions">
+          <a class="btn btn-main" href="#install">Install now!</a>
+        </div>
+      </div>
+
+      <div class="hero-terminal reveal">
+        <div class="terminal-head">
+          <span></span><span></span><span></span>
+          <p>One Command Installer Works on Linux, macOS & WSL</p>
+        </div>
+        <div class="terminal-body">
+          <p class="prompt">$ <code id="install-command">curl -fsSL https://raw.githubusercontent.com/hiddenway/kovalsky/main/scripts/install.sh | bash</code></p>
+          <button class="copy-btn" data-copy="#install-command">Copy</button>
+        </div>
+      </div>
+    </header>
+
+    <section class="section container reveal" id="install">
+      <div class="section-head">
+        <h2>Get Started in 3 Steps</h2>
+        <p>From zero to your first AI employee workflow in minutes.</p>
+      </div>
+      <div class="steps">
+        <article class="step-card">
+          <span class="step-index">01</span>
+          <h3>Install</h3>
+          <div class="step-shell" data-copy-trigger="#step-install-command" role="button" tabindex="0" aria-label="Copy install command">
+            <div class="step-shell-head">
+              <span></span><span></span><span></span>
+              <p>Install Script</p>
+              <button class="copy-btn copy-btn-inline" data-copy="#step-install-command">Copy</button>
+            </div>
+            <p class="step-shell-command">$ <code id="step-install-command">curl -fsSL https://raw.githubusercontent.com/hiddenway/kovalsky/main/scripts/install.sh | bash</code></p>
+          </div>
+          <p class="step-hint">Click anywhere in the command block to copy.</p>
+        </article>
+        <article class="step-card">
+          <span class="step-index">02</span>
+          <h3>Start Platform</h3>
+          <pre class="step-pre"><code>kovalsky start
+# Backend: http://127.0.0.1:18787
+# UI:      http://127.0.0.1:3764/pipelines</code></pre>
+        </article>
+        <article class="step-card">
+          <span class="step-index">03</span>
+          <h3>Build Your Team</h3>
+          <pre class="step-pre"><code>User → Workflow → AI Agents → Result
+Research → Build → Test → Deploy</code></pre>
+        </article>
+      </div>
+    </section>
+
+    <section class="section container reveal" id="features">
+      <div class="section-head">
+        <h2>Why Kovalsky</h2>
+      </div>
+      <div class="feature-grid">
+        <article class="feature">
+          <h3>From Assistant to AI Team</h3>
+          <p>Most tools are “User → AI → Response”. Kovalsky runs a coordinated team of role-based agents with clear responsibilities.</p>
+        </article>
+        <article class="feature">
+          <h3>Workflow-First Execution</h3>
+          <p>Design graph-based workflows, pass context between steps, and control execution exactly the way your team actually works.</p>
+        </article>
+        <article class="feature">
+          <h3>Direct Agent Communication</h3>
+          <p>Talk to each agent individually to clarify tasks, fix mistakes, and refine output without breaking the rest of the pipeline.</p>
+        </article>
+        <article class="feature">
+          <h3>Open-Source + Self-Hosted</h3>
+          <p>Keep full control over your runtime, data, and integrations. Deploy locally or in your infra without platform lock-in.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="section container reveal" id="flow">
+      <div class="section-head">
+        <h2>How It Works</h2>
+      </div>
+      <div class="flow">
+        <div class="flow-node">
+          <p class="flow-title">Define Workflow</p>
+          <p>Assign agent roles and execution order</p>
+        </div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-node">
+          <p class="flow-title">Coordinate Agents</p>
+          <p>Specialized workers collaborate per step</p>
+        </div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-node">
+          <p class="flow-title">Ship Results Faster</p>
+          <p>Track runs, review outputs, iterate quickly</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="section container cta reveal" id="cta">
+      <h2>Stop Prompting One Bot. Start Managing AI Employees.</h2>
+      <p>Build repeatable workflows, delegate to specialized agents, and turn complex work into a predictable execution system.</p>
+      <a class="btn btn-main" href="https://github.com/hiddenway/kovalsky/releases">Download Kovalsky Desktop</a>
+    </section>
+
+    <footer class="footer container">
+      <p>© <span id="year"></span> Kovalsky.</p>
+    </footer>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <script src="./script.js"></script>
+  </body>
+</html>
