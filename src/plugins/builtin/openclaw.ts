@@ -349,6 +349,20 @@ function isTelegramTask(input: string): boolean {
   return /(telegram|телеграм|телега|tg\b|бота?\b)/i.test(input);
 }
 
+function isLikelyActionRequestText(input: string): boolean {
+  const normalized = input.trim().toLowerCase();
+  if (!normalized) {
+    return false;
+  }
+
+  if (normalized.endsWith("?") || /^(how|what|why|when|where|who|как|что|почему|когда|где|кто|зачем)\b/i.test(normalized)) {
+    return false;
+  }
+
+  return /(open|visit|browse|collect|send|write|create|update|run|execute|search|check|scrape|publish|deploy|открой|собери|отправ|запусти|выполни|сделай|проверь|найди|собирай|просматривай|опубликуй)/i
+    .test(normalized);
+}
+
 function buildAgentMessage(ctx: StepExecutionContext): string {
   const lines: string[] = [];
   const persistBackgroundProcesses = ctx.settings.persistBackgroundProcesses === true;
@@ -370,8 +384,10 @@ function buildAgentMessage(ctx: StepExecutionContext): string {
     lines.push(`Planner handoff context: ${ctx.plannedNode.handoffContext.trim()}`);
   }
   lines.push("Execution policy: when user request is imperative and actionable, execute immediately.");
+  lines.push("Default behavior: action-first. Start execution without confirmation when request is already explicit.");
   lines.push("If the task already includes concrete inputs (credentials, IDs, URLs, file paths, account handles), use them directly.");
-  lines.push("Ask a clarifying question only when a truly blocking input is missing.");
+  lines.push("Ask a clarifying question only when a truly blocking input is missing and no safe assumption exists.");
+  lines.push("If not blocked, make a reasonable assumption, execute, and report what assumption was used.");
   lines.push("Do not request persona/onboarding info or repeated confirmations during execution.");
   if (useWorkspaceRelativeProjectPath) {
     lines.push("Path policy: never create or use root-level /project or /projects.");
@@ -497,6 +513,11 @@ function buildReportMessage(ctx: StepExecutionContext): string {
     lines.push("Do NOT ask onboarding/profile/persona questions.");
     lines.push("Never ask for name, identity, vibe, creature type, or signature emoji.");
     const followupText = ctx.reportContext.followupPrompt.trim();
+    if (isLikelyActionRequestText(followupText)) {
+      lines.push("Action-first follow-up: user gave an executable command, so avoid clarification unless execution is strictly blocked.");
+      lines.push("Prefer starting execution now with best-effort assumptions.");
+      lines.push("Prefer KOVALSKY_DECISION: rerun for direct action requests.");
+    }
     if (isTelegramTask(followupText) || containsTelegramBotToken(followupText)) {
       lines.push("If request includes Telegram bot token/chat id, treat it as executable.");
       lines.push("Do not answer that Telegram requires OpenClaw accountId/integration for this case.");
@@ -520,7 +541,8 @@ function buildReportMessage(ctx: StepExecutionContext): string {
   }
   lines.push("Answer directly and naturally like an assistant, not a rigid report.");
   if (reportKind === "chat_followup") {
-    lines.push("If data is insufficient, ask one concise clarifying question.");
+    lines.push("For missing non-critical details, assume sensible defaults and continue.");
+    lines.push("Ask at most one clarifying question only when execution is strictly blocked.");
     lines.push("At the very end add one strict machine-readable line:");
     lines.push("KOVALSKY_DECISION: rerun or KOVALSKY_DECISION: no_rerun");
     lines.push("Use rerun only when the user clearly asks to perform edits/actions now.");
