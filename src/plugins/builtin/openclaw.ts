@@ -456,6 +456,11 @@ function buildAgentMessage(ctx: StepExecutionContext): string {
   }
   if (requireBrowserChecks) {
     lines.push("Run browser blackbox checks and finish in one response with summary, issues, reproduction, severity.");
+    lines.push("For explicit open/visit/navigate requests, first perform a real browser action (browser open/navigate), not only diagnostics.");
+    lines.push("Do not treat `browser status` with `running=false` or `cdpReady=false` as a hard blocker by itself.");
+    lines.push("`browser status` may report `running=false` before first tab open or in relay mode while browser tools still work.");
+    lines.push("Only report browser unavailability after an actual browser tool action fails (for example: browser open/navigate/snapshot).");
+    lines.push("If gateway restart is denied by policy, continue with browser actions that do not require restart instead of stopping immediately.");
   } else {
     lines.push("Do not launch interactive browser sessions unless the task explicitly asks for browser/UI checks.");
   }
