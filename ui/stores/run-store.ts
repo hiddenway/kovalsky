@@ -52,6 +52,64 @@ function parseMetaJson(raw: string | null): Record<string, unknown> | undefined 
   }
 }
 
+type NodeChatMessage = {
+  id: string;
+  run_id: string;
+  node_id: string;
+  role: "user" | "agent" | "system";
+  phase: "pre_run" | "run";
+  content: string;
+  created_at: string;
+  meta_json: string | null;
+};
+
+function looksLikeAwaitingUserInputText(content: string): boolean {
+  const normalized = content.trim().toLowerCase();
+  if (!normalized) {
+    return false;
+  }
+  if (/[?？]/.test(normalized)) {
+    return true;
+  }
+  if (
+    /\b(need|please provide|please confirm|confirm|can you|could you|which|what|when|where|share|specify|clarify)\b/i.test(
+      normalized,
+    )
+  ) {
+    return true;
+  }
+  if (/(нужн|подтвер|уточ|какой|какие|когда|где|сколько|можете|пришлите|укажи|уточни)/i.test(normalized)) {
+    return true;
+  }
+  return false;
+}
+
+function isAwaitingUserInputFromChat(messages: NodeChatMessage[]): boolean {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (message.role !== "agent" || message.phase !== "run") {
+      continue;
+    }
+
+    const meta = parseMetaJson(message.meta_json);
+    const source = typeof meta?.source === "string" ? meta.source.trim().toLowerCase() : "";
+    if (source && source !== "chat_followup_report") {
+      continue;
+    }
+
+    const rerunDecision = typeof meta?.rerunDecision === "string" ? meta.rerunDecision.trim().toLowerCase() : "";
+    if (rerunDecision === "rerun") {
+      return false;
+    }
+    if (meta?.awaitingUserInput === true) {
+      return true;
+    }
+    return looksLikeAwaitingUserInputText(message.content);
+  }
+
+  return false;
+}
+
 async function mapSnapshotToRecord(
   runId: string,
   pipelineSnapshot: Pipeline,
@@ -137,10 +195,22 @@ async function mapSnapshotToRecord(
       );
 
       const status = toStepStatus(stepRun.status);
+      let awaitingUserInput = false;
+      if (status === "pending") {
+        if (previousStep?.awaitingUserInput) {
+          awaitingUserInput = true;
+        } else {
+          awaitingUserInput = await api
+            .getNodeChat(runId, stepId)
+            .then((payload) => isAwaitingUserInputFromChat(payload.messages))
+            .catch(() => false);
+        }
+      }
       return {
         stepId,
         agentId: stepRun.agent_id,
         status,
+        awaitingUserInput,
         rerun: isRerun,
         rerunCount,
         logs,
@@ -155,7 +225,9 @@ async function mapSnapshotToRecord(
                 ? "Executing"
                 : status === "canceled"
                   ? "Canceled"
-                  : "Waiting"),
+                  : awaitingUserInput
+                    ? "Awaiting your reply in chat"
+                    : "Waiting"),
       } satisfies StepRun;
     }),
   );

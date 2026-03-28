@@ -435,6 +435,10 @@ export class RunService {
     const shouldLaunchFollowup = followup.decision === "rerun";
     const requestedRerunMode = input.rerunMode === "pipeline" ? "pipeline" : "node";
     const rerunMode = this.isImmediateStopServerRequest(prompt) ? "node" : requestedRerunMode;
+    const awaitingUserInput = this.isAwaitingUserInputReply({
+      reply: followup.reply,
+      decision: followup.decision,
+    });
     let nodeRerunLaunch: NodeFollowupRerunLaunch | null = null;
     let startedRunId: string | null = null;
     let pipelineRerunError: string | null = null;
@@ -468,6 +472,7 @@ export class RunService {
         source: "chat_followup_report",
         rerunDecision: followup.decision,
         rerunMode,
+        awaitingUserInput: awaitingUserInput || undefined,
         startedRunId: startedRunId ?? undefined,
         rerunError: pipelineRerunError ?? undefined,
         nodeRerunLaunch: nodeRerunLaunch ?? undefined,
@@ -1217,6 +1222,38 @@ export class RunService {
     }
     return /(who am i|who are you|what should i be called|what kind of.?creature|signature emoji|vibe\?|quick setup so i can work smoothly|then i can start your .* flow|как мне тебя называть|кто я|кто ты|выбери имя|подпись эмодзи|вайб)/i
       .test(normalized);
+  }
+
+  private isAwaitingUserInputReply(input: {
+    reply: string;
+    decision: FollowupRerunDecision;
+  }): boolean {
+    if (input.decision === "rerun") {
+      return false;
+    }
+
+    const normalized = input.reply.trim().toLowerCase();
+    if (!normalized) {
+      return false;
+    }
+
+    if (/[?？]/.test(normalized)) {
+      return true;
+    }
+
+    if (
+      /\b(need|please provide|please confirm|confirm|can you|could you|which|what|when|where|share|specify|clarify)\b/i.test(
+        normalized,
+      )
+    ) {
+      return true;
+    }
+
+    if (/(нужн|подтвер|уточ|какой|какие|когда|где|сколько|можете|пришлите|укажи|уточни)/i.test(normalized)) {
+      return true;
+    }
+
+    return false;
   }
 
   private buildStopServerOnlyGoal(existingGoal: string, prompt: string): string {

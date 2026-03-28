@@ -56,9 +56,10 @@ function AgentNode({ data, selected = false }: AgentNodeProps): React.JSX.Elemen
   const customName = data.customName?.trim() ?? "";
   const status = data.runtimeStatus ?? data.handoff?.status;
   const statusLabel = data.runtimeStatusLabel ?? (status ? (STATUS_LABELS[status] ?? status) : "");
-  const statusStyleKey = statusLabel.toLowerCase() === "waiting"
+  const normalizedStatusLabel = statusLabel.toLowerCase();
+  const statusStyleKey = normalizedStatusLabel === "waiting" || normalizedStatusLabel === "awaiting"
     ? "running"
-    : statusLabel.toLowerCase() === "paused"
+    : normalizedStatusLabel === "paused"
       ? "canceled"
       : status;
   const triggerMode = isTriggerAgent(data.agentId) ? readTriggerLifecycleStatus(data.settings) : null;

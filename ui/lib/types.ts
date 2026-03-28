@@ -69,6 +69,7 @@ export type StepRun = {
   stepId: string;
   agentId: string;
   status: StepStatus;
+  awaitingUserInput?: boolean;
   rerun?: boolean;
   rerunCount?: number;
   logs: string[];

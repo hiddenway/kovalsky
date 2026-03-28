@@ -335,13 +335,16 @@ function CanvasBuilderInner(): React.JSX.Element {
                 ? "waiting"
                 : step.status)
           : undefined;
+        const awaitingStatusLabel = !isLoopAgent(node.data.agentId) && step.status === "pending" && step.awaitingUserInput
+          ? "awaiting"
+          : undefined;
 
         return {
           ...node,
           data: {
             ...node.data,
             runtimeStatus: step.status,
-            runtimeStatusLabel: loopStatusLabel,
+            runtimeStatusLabel: loopStatusLabel ?? awaitingStatusLabel,
             handoff: {
               status: step.status,
               summary: step.summary ?? "No summary yet.",
