@@ -401,12 +401,15 @@ export class RunService {
     stepRuns: ReturnType<DatabaseService["getStepRunsByRun"]>;
     artifacts: ReturnType<DatabaseService["getArtifactsByRun"]>;
     plan: RunPlanData | null;
+    loopWaiting: boolean;
   } {
+    const control = this.controls.get(runId);
     return {
       run: this.db.getRun(runId),
       stepRuns: this.db.getStepRunsByRun(runId),
       artifacts: this.db.getArtifactsByRun(runId),
       plan: this.getRunPlan(runId),
+      loopWaiting: control?.waitingLoopContinuation === true,
     };
   }
 

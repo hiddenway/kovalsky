@@ -331,7 +331,9 @@ function CanvasBuilderInner(): React.JSX.Element {
         const loopStatusLabel = isLoopAgent(node.data.agentId)
           ? (step.status === "canceled"
               ? "paused"
-              : step.status === "success" && step.logs.some((line) => /loop status:\s*waiting/i.test(toHumanLogLine(line)))
+              : latestRun?.run.loopWaiting === true
+                && step.status === "success"
+                && step.logs.some((line) => /loop status:\s*waiting/i.test(toHumanLogLine(line)))
                 ? "waiting"
                 : step.status)
           : undefined;
@@ -410,14 +412,7 @@ function CanvasBuilderInner(): React.JSX.Element {
     if (!latestRun) {
       return false;
     }
-    return latestRun.steps.some((step) =>
-      step.agentId === "loop"
-      && (
-        step.status === "pending"
-        || step.status === "running"
-        || (step.status === "success" && step.logs.some((line) => /loop status:\s*waiting/i.test(toHumanLogLine(line))))
-      ),
-    );
+    return latestRun.run.loopWaiting === true;
   }, [latestRun]);
   const isRunning = latestRun?.run.status === "running" || hasLoopWaitingStep;
   const hasTriggerNode = useMemo(
@@ -523,18 +518,26 @@ function CanvasBuilderInner(): React.JSX.Element {
     }
   }, [getActivePipelineSnapshot, pushToast, saveActivePipeline, startRun]);
 
-  const cancelActiveRun = useCallback(() => {
+  const cancelActiveRun = useCallback(async () => {
     const runId = latestRun?.run.id;
     if (!runId || !isRunning) {
       return;
     }
 
-    cancelRun(runId);
-    pushToast({
-      title: "Run cancel requested",
-      description: `Run ID: ${runId}`,
-      tone: "info",
-    });
+    const canceled = await cancelRun(runId);
+    pushToast(
+      canceled
+        ? {
+            title: "Run cancel requested",
+            description: `Run ID: ${runId}`,
+            tone: "info",
+          }
+        : {
+            title: "Cancel failed",
+            description: "Run is no longer active on gateway.",
+            tone: "error",
+          },
+    );
   }, [cancelRun, isRunning, latestRun, pushToast]);
 
   const handleSave = useCallback(async () => {

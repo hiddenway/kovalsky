@@ -50,6 +50,7 @@ export type Run = {
   id: string;
   pipelineId: string;
   status: RunStatus;
+  loopWaiting?: boolean;
   startedAt: string;
   finishedAt?: string;
 };

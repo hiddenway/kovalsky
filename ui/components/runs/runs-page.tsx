@@ -13,8 +13,8 @@ type StepWithMeta = {
   nodeTitle: string;
 };
 
-function getStepStatusLabel(step: StepRun): string {
-  if (step.agentId === "loop" && step.status === "success" && step.logs.some((line) => /loop status:\s*waiting/i.test(line))) {
+function getStepStatusLabel(step: StepRun, loopWaiting: boolean): string {
+  if (loopWaiting && step.agentId === "loop" && step.status === "success" && step.logs.some((line) => /loop status:\s*waiting/i.test(line))) {
     return "waiting";
   }
   if (step.awaitingUserInput && step.status === "pending") {
@@ -30,7 +30,7 @@ function buildStepsWithMeta(record: RunRecord): StepWithMeta[] {
     const customName = node?.data.customName?.trim() ?? "";
     return {
       step,
-      statusLabel: getStepStatusLabel(step),
+      statusLabel: getStepStatusLabel(step, record.run.loopWaiting === true),
       goal,
       nodeTitle: customName || step.agentId,
     };
@@ -124,7 +124,7 @@ export function RunsPage(): React.JSX.Element {
                   }
                   return rightAt.localeCompare(leftAt);
                 });
-              const runIsActive = record.run.status === "queued" || record.run.status === "running";
+              const runIsActive = record.run.status === "queued" || record.run.status === "running" || record.run.loopWaiting === true;
               const runStatusLabel = runIsActive && runningNow.length > 0 ? "running" : record.run.status;
               const isCancelable = runIsActive;
               const openStepId = openLogsByRun[record.run.id] ?? null;

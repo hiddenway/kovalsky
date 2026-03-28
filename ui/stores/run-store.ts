@@ -7,6 +7,10 @@ import { usePipelineStore } from "@/stores/pipeline-store";
 const POLL_INTERVAL_MS = 1200;
 const FINAL_STATUSES: RunStatus[] = ["success", "failed", "canceled"];
 
+function isTerminalRun(status: RunStatus, loopWaiting?: boolean): boolean {
+  return FINAL_STATUSES.includes(status) && loopWaiting !== true;
+}
+
 const controllers = new Map<string, { canceled: boolean }>();
 
 function persist(records: RunRecord[]): void {
@@ -240,6 +244,7 @@ async function mapSnapshotToRecord(
       id: snapshot.run.id,
       pipelineId: snapshot.run.pipeline_id,
       status: toRunStatus(snapshot.run.status),
+      loopWaiting: snapshot.loopWaiting === true,
       startedAt: snapshot.run.started_at ?? new Date().toISOString(),
       finishedAt: snapshot.run.finished_at ?? undefined,
     },
@@ -272,6 +277,10 @@ export const useRunStore = create<RunState>((set, get) => ({
 
     const loaded = readRunsFromStorage().map((record) => ({
       ...record,
+      run: {
+        ...record.run,
+        loopWaiting: record.run.loopWaiting === true && (record.run.status === "queued" || record.run.status === "running"),
+      },
       steps: record.steps.map((step) => ({
         ...step,
         artifacts: step.artifacts.filter((artifact) => artifact.type !== "BlackboxReport"),
@@ -283,7 +292,9 @@ export const useRunStore = create<RunState>((set, get) => ({
       activeRunId: loaded[0]?.run.id ?? null,
     });
 
-    const inFlight = loaded.filter((record) => record.run.status === "queued" || record.run.status === "running");
+    const inFlight = loaded.filter((record) =>
+      record.run.status === "queued" || record.run.status === "running" || record.run.loopWaiting === true,
+    );
     if (inFlight.length === 0) {
       return;
     }
@@ -322,6 +333,7 @@ export const useRunStore = create<RunState>((set, get) => ({
         id: provisionalRunId,
         pipelineId: pipeline.id,
         status: "queued",
+        loopWaiting: false,
         startedAt: new Date().toISOString(),
       },
       pipelineSnapshot: pipeline,
@@ -389,6 +401,7 @@ export const useRunStore = create<RunState>((set, get) => ({
                 run: {
                   ...record.run,
                   status: "failed" as RunStatus,
+                  loopWaiting: false,
                   finishedAt: new Date().toISOString(),
                 },
                 steps: record.steps.map((step) => ({
@@ -430,7 +443,7 @@ export const useRunStore = create<RunState>((set, get) => ({
           });
           usePipelineStore.getState().applyStepStatuses(stepStatusMap(next.steps));
 
-          if (FINAL_STATUSES.includes(next.run.status)) {
+          if (isTerminalRun(next.run.status, next.run.loopWaiting)) {
             break;
           }
 
@@ -464,6 +477,7 @@ export const useRunStore = create<RunState>((set, get) => ({
           id: runId,
           pipelineId: pipeline.id,
           status: "queued",
+          loopWaiting: false,
           startedAt: new Date().toISOString(),
         },
         pipelineSnapshot: pipeline,
@@ -520,7 +534,7 @@ export const useRunStore = create<RunState>((set, get) => ({
           });
           usePipelineStore.getState().applyStepStatuses(stepStatusMap(next.steps));
 
-          if (FINAL_STATUSES.includes(next.run.status)) {
+          if (isTerminalRun(next.run.status, next.run.loopWaiting)) {
             break;
           }
 
@@ -552,11 +566,12 @@ export const useRunStore = create<RunState>((set, get) => ({
         record.run.id === runId
           ? {
               ...record,
-              run: {
-                ...record.run,
-                status: "canceled" as RunStatus,
-                finishedAt: new Date().toISOString(),
-              },
+                run: {
+                  ...record.run,
+                  status: "canceled" as RunStatus,
+                  loopWaiting: false,
+                  finishedAt: new Date().toISOString(),
+                },
               steps: record.steps.map((step) =>
                 step.status === "pending" || step.status === "running"
                   ? {

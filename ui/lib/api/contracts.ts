@@ -47,6 +47,7 @@ export type GatewayRunSnapshot = {
     finished_at: string | null;
     error_summary: string | null;
   } | null;
+  loopWaiting?: boolean;
   stepRuns: Array<{
     id: string;
     run_id: string;

@@ -137,12 +137,13 @@ export function RunDetailsPage({ runId }: Props): React.JSX.Element {
     );
   }
 
-  const hasLoopWaitingStep = record.steps.some((step) =>
-    step.agentId === "loop"
-    && step.status === "success"
-    && step.logs.some((line) => /loop status:\s*waiting/i.test(line)),
-  );
-  const runIsActive = record.run.status === "queued" || record.run.status === "running";
+  const hasLoopWaitingStep = record.run.loopWaiting === true
+    && record.steps.some((step) =>
+      step.agentId === "loop"
+      && step.status === "success"
+      && step.logs.some((line) => /loop status:\s*waiting/i.test(line)),
+    );
+  const runIsActive = record.run.status === "queued" || record.run.status === "running" || record.run.loopWaiting === true;
   const effectiveRunStatus = runIsActive && hasLoopWaitingStep ? "running" : record.run.status;
   const isCancelable = runIsActive;
 
