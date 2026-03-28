@@ -164,12 +164,30 @@ Agents perform tasks and return results back to the workflow.
 <a id="installation-and-run"></a>
 ## ⚡ Installation & Run
 
-### 1) Download Prebuilt Release
+### 1) One-line Installer (curl | bash)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/hiddenway/kovalsky/main/scripts/install.sh | bash
+```
+
+After install:
+
+```bash
+kovalsky start
+```
+
+Optional uninstall:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/hiddenway/kovalsky/main/scripts/uninstall.sh | bash
+```
+
+### 2) Download Prebuilt Release
 
 Use the latest release:
 [https://github.com/hiddenway/kovalsky/releases](https://github.com/hiddenway/kovalsky/releases)
 
-### 2) Build and Run from Source
+### 3) Build and Run from Source
 
 ```bash
 git clone https://github.com/hiddenway/kovalsky.git
