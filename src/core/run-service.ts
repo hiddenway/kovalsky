@@ -32,6 +32,8 @@ import type { LoopContinuationRequest } from "./graph-executor";
 
 interface ActiveRunControl {
   canceled: boolean;
+  waitingLoopContinuation: boolean;
+  loopContinuationTimer: ReturnType<typeof setTimeout> | null;
 }
 
 export interface StartRunOverrides {
@@ -104,7 +106,11 @@ export class RunService {
 
   async startRun(pipelineId: string, graph: PipelineGraph, overrides: StartRunOverrides): Promise<{ runId: string }> {
     const run = this.db.createRun(pipelineId);
-    const control: ActiveRunControl = { canceled: false };
+    const control: ActiveRunControl = {
+      canceled: false,
+      waitingLoopContinuation: false,
+      loopContinuationTimer: null,
+    };
     this.controls.set(run.id, control);
 
     const workspacePath = this.resolveWorkspacePath(overrides.workspacePath);
@@ -185,12 +191,18 @@ export class RunService {
         if (result.status !== "success" || !result.loopContinuation) {
           return;
         }
-        this.scheduleLoopContinuation({
+        const timer = this.scheduleLoopContinuation({
+          sourceRunId: run.id,
+          control,
           pipelineId,
           workspacePath,
           continuation: result.loopContinuation,
           previousOverrides: overrides,
         });
+        if (timer) {
+          control.waitingLoopContinuation = true;
+          control.loopContinuationTimer = timer;
+        }
       })
       .catch((error) => {
         const message = error instanceof Error ? error.message : "Run failed";
@@ -198,6 +210,9 @@ export class RunService {
         this.db.updateRunStatus(run.id, "failed", message);
       })
       .finally(() => {
+        if (control.waitingLoopContinuation) {
+          return;
+        }
         this.controls.delete(run.id);
       });
 
@@ -205,11 +220,13 @@ export class RunService {
   }
 
   private scheduleLoopContinuation(input: {
+    sourceRunId: string;
+    control: ActiveRunControl;
     pipelineId: string;
     workspacePath: string;
     continuation: LoopContinuationRequest;
     previousOverrides: StartRunOverrides;
-  }): void {
+  }): ReturnType<typeof setTimeout> | null {
     const delayMs = Math.max(0, input.continuation.delaySeconds * 1000);
     const runNextCycle = async (): Promise<void> => {
       const pipeline = this.db.getPipeline(input.pipelineId);
@@ -268,12 +285,22 @@ export class RunService {
     };
 
     if (delayMs === 0) {
-      void runNextCycle();
-      return;
+      void runNextCycle().finally(() => {
+        this.controls.delete(input.sourceRunId);
+      });
+      return null;
     }
 
-    setTimeout(() => {
-      void runNextCycle();
+    return setTimeout(() => {
+      input.control.loopContinuationTimer = null;
+      input.control.waitingLoopContinuation = false;
+      if (input.control.canceled) {
+        this.controls.delete(input.sourceRunId);
+        return;
+      }
+      void runNextCycle().finally(() => {
+        this.controls.delete(input.sourceRunId);
+      });
     }, delayMs);
   }
 
@@ -343,10 +370,16 @@ export class RunService {
     const control = this.controls.get(runId);
     if (control) {
       control.canceled = true;
+      if (control.loopContinuationTimer) {
+        clearTimeout(control.loopContinuationTimer);
+        control.loopContinuationTimer = null;
+      }
+      control.waitingLoopContinuation = false;
       void this.graphExecutor.cancelRun(runId).catch((error) => {
         this.logger.warn({ err: error, runId }, "failed to cancel active run processes");
       });
       void this.markRunCanceled(runId, "Run canceled by user");
+      this.controls.delete(runId);
       return true;
     }
 

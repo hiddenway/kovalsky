@@ -406,7 +406,20 @@ function CanvasBuilderInner(): React.JSX.Element {
     return Array.from(new Set(sourceStep.artifacts.map((artifact) => artifact.type)));
   }, [selectedEdge, latestRun]);
 
-  const isRunning = latestRun?.run.status === "running";
+  const hasLoopWaitingStep = useMemo(() => {
+    if (!latestRun) {
+      return false;
+    }
+    return latestRun.steps.some((step) =>
+      step.agentId === "loop"
+      && (
+        step.status === "pending"
+        || step.status === "running"
+        || (step.status === "success" && step.logs.some((line) => /loop status:\s*waiting/i.test(toHumanLogLine(line))))
+      ),
+    );
+  }, [latestRun]);
+  const isRunning = latestRun?.run.status === "running" || hasLoopWaitingStep;
   const hasTriggerNode = useMemo(
     () => nodes.some((node) => isTriggerAgent(node.data.agentId)),
     [nodes],
@@ -512,7 +525,7 @@ function CanvasBuilderInner(): React.JSX.Element {
 
   const cancelActiveRun = useCallback(() => {
     const runId = latestRun?.run.id;
-    if (!runId || latestRun?.run.status !== "running") {
+    if (!runId || !isRunning) {
       return;
     }
 
@@ -522,7 +535,7 @@ function CanvasBuilderInner(): React.JSX.Element {
       description: `Run ID: ${runId}`,
       tone: "info",
     });
-  }, [cancelRun, latestRun, pushToast]);
+  }, [cancelRun, isRunning, latestRun, pushToast]);
 
   const handleSave = useCallback(async () => {
     saveActivePipeline();
