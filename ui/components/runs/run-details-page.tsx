@@ -137,7 +137,13 @@ export function RunDetailsPage({ runId }: Props): React.JSX.Element {
     );
   }
 
-  const isRunning = record.run.status === "running";
+  const hasLoopWaitingStep = record.steps.some((step) =>
+    step.agentId === "loop"
+    && step.status === "success"
+    && step.logs.some((line) => /loop status:\s*waiting/i.test(line)),
+  );
+  const effectiveRunStatus = hasLoopWaitingStep && record.run.status !== "canceled" ? "running" : record.run.status;
+  const isCancelable = record.run.status === "queued" || record.run.status === "running" || hasLoopWaitingStep;
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100">
@@ -145,7 +151,7 @@ export function RunDetailsPage({ runId }: Props): React.JSX.Element {
         <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3">
           <div>
             <p className="text-xs text-zinc-400">Run ID: {record.run.id}</p>
-            <h1 className="text-xl font-semibold">Status: {record.run.status}</h1>
+            <h1 className="text-xl font-semibold">Status: {effectiveRunStatus}</h1>
             <p className="text-xs text-zinc-400">
               Started {new Date(record.run.startedAt).toLocaleString()}
               {record.run.finishedAt ? ` | Finished ${new Date(record.run.finishedAt).toLocaleString()}` : ""}
@@ -159,7 +165,7 @@ export function RunDetailsPage({ runId }: Props): React.JSX.Element {
             <Link href="/builder" className="rounded-md border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-sm hover:bg-zinc-800">
               Builder
             </Link>
-            {isRunning ? (
+            {isCancelable ? (
               <Button type="button" variant="danger" onClick={() => cancelRun(record.run.id)}>
                 Cancel
               </Button>
