@@ -67,9 +67,12 @@ export type Artifact = {
 
 export type StepRun = {
   stepId: string;
+  stepRunId?: string;
   agentId: string;
   status: StepStatus;
   awaitingUserInput?: boolean;
+  startedAt?: string;
+  finishedAt?: string;
   rerun?: boolean;
   rerunCount?: number;
   logs: string[];

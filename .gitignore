@@ -4,7 +4,7 @@ dist
 *.tsbuildinfo
 *.log
 .DS_Store
-runs/
+/runs/
 .tmpdata/
 release/
 .runtime-node_modules/

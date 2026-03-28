@@ -208,9 +208,12 @@ async function mapSnapshotToRecord(
       }
       return {
         stepId,
+        stepRunId: stepRun.id,
         agentId: stepRun.agent_id,
         status,
         awaitingUserInput,
+        startedAt: stepRun.started_at ?? undefined,
+        finishedAt: stepRun.finished_at ?? undefined,
         rerun: isRerun,
         rerunCount,
         logs,
