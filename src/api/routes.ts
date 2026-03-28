@@ -11,7 +11,7 @@ import type { EventBus } from "../core/event-bus";
 import type { ToolchainService } from "../core/toolchain-service";
 import type { SettingsService } from "../core/settings-service";
 import type { TriggerService } from "../core/trigger-service";
-import type { PipelineGraph } from "../types";
+import type { PipelineGraph, RunStatus } from "../types";
 
 interface RoutesDeps {
   version: string;
@@ -107,6 +107,12 @@ const settingsPatchSchema = z.object({
       customApiBaseUrl: z.string().optional(),
     }).optional(),
   }).optional(),
+});
+
+const runListQuerySchema = z.object({
+  pipelineId: z.string().min(1).optional(),
+  status: z.string().optional(),
+  limit: z.coerce.number().int().positive().max(200).optional(),
 });
 
 export async function registerRoutes(app: FastifyInstance<any, any, any, any>, deps: RoutesDeps): Promise<void> {
@@ -216,6 +222,33 @@ export async function registerRoutes(app: FastifyInstance<any, any, any, any>, d
     } catch (error) {
       return reply.code(400).send({ error: error instanceof Error ? error.message : "Validation error" });
     }
+  });
+
+  app.get("/runs", async (request, reply) => {
+    const parsed = runListQuerySchema.safeParse(request.query ?? {});
+    if (!parsed.success) {
+      return reply.code(400).send({ error: parsed.error.flatten() });
+    }
+
+    const statusRaw = (parsed.data.status ?? "").trim();
+    const requestedStatuses = statusRaw
+      ? statusRaw.split(",").map((item) => item.trim()).filter(Boolean)
+      : [];
+    const statuses = requestedStatuses.filter((status): status is RunStatus =>
+      status === "queued" || status === "running" || status === "success" || status === "failed" || status === "canceled",
+    );
+
+    if (requestedStatuses.length > 0 && statuses.length === 0) {
+      return reply.code(400).send({ error: "Invalid status filter" });
+    }
+
+    const runs = deps.db.listRuns({
+      pipelineId: parsed.data.pipelineId,
+      statuses: statuses.length > 0 ? statuses : undefined,
+      limit: parsed.data.limit,
+    });
+
+    return { runs };
   });
 
   app.post("/runs", async (request, reply) => {

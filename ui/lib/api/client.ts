@@ -221,6 +221,35 @@ class RestKovalskyApiClient implements KovalskyApiClient {
     return (await response.json()) as { runId: string };
   }
 
+  async listRuns(input?: {
+    pipelineId?: string;
+    statuses?: Array<"queued" | "running" | "success" | "failed" | "canceled">;
+    limit?: number;
+  }) {
+    const query = new URLSearchParams();
+    if (input?.pipelineId?.trim()) {
+      query.set("pipelineId", input.pipelineId.trim());
+    }
+    if (Array.isArray(input?.statuses) && input.statuses.length > 0) {
+      query.set("status", input.statuses.join(","));
+    }
+    if (typeof input?.limit === "number" && Number.isFinite(input.limit)) {
+      query.set("limit", String(Math.max(1, Math.min(200, Math.floor(input.limit)))));
+    }
+
+    const suffix = query.toString();
+    const response = await this.fetchWithFallback(`/runs${suffix ? `?${suffix}` : ""}`, {
+      method: "GET",
+      cache: "no-store",
+    });
+
+    if (!response.ok) {
+      await this.throwHttpError(response, "Failed to load runs");
+    }
+
+    return (await response.json()) as Awaited<ReturnType<KovalskyApiClient["listRuns"]>>;
+  }
+
   async getRun(runId: string) {
     const response = await this.fetchWithFallback(`/runs/${runId}`, {
       method: "GET",

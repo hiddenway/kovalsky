@@ -234,6 +234,46 @@ export class DatabaseService {
     return (this.db.prepare("SELECT * FROM runs WHERE id = ?").get(runId) as RunRecord | undefined) ?? null;
   }
 
+  listRuns(input?: {
+    pipelineId?: string;
+    statuses?: RunStatus[];
+    limit?: number;
+  }): RunRecord[] {
+    const where: string[] = [];
+    const params: Array<string | number> = [];
+
+    if (input?.pipelineId?.trim()) {
+      where.push("pipeline_id = ?");
+      params.push(input.pipelineId.trim());
+    }
+
+    if (Array.isArray(input?.statuses) && input.statuses.length > 0) {
+      const statuses = input.statuses
+        .map((status) => status.trim())
+        .filter((status): status is RunStatus =>
+          status === "queued" || status === "running" || status === "success" || status === "failed" || status === "canceled",
+        );
+      if (statuses.length > 0) {
+        where.push(`status IN (${statuses.map(() => "?").join(", ")})`);
+        params.push(...statuses);
+      }
+    }
+
+    const limit = Math.max(1, Math.min(200, Math.floor(input?.limit ?? 80)));
+    params.push(limit);
+
+    const whereSql = where.length > 0 ? `WHERE ${where.join(" AND ")}` : "";
+    const query = `
+      SELECT *
+      FROM runs
+      ${whereSql}
+      ORDER BY COALESCE(started_at, finished_at, '') DESC, id DESC
+      LIMIT ?
+    `;
+
+    return this.db.prepare(query).all(...params) as RunRecord[];
+  }
+
   updateRunStatus(runId: string, status: RunStatus, errorSummary: string | null = null): void {
     const startedAt = status === "running" ? nowIso() : undefined;
     const finishedAt = ["success", "failed", "canceled"].includes(status) ? nowIso() : undefined;

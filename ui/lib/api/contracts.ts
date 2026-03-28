@@ -15,6 +15,17 @@ export type CreateRunResponse = {
   runId: string;
 };
 
+export type GatewayRunListResponse = {
+  runs: Array<{
+    id: string;
+    pipeline_id: string;
+    status: "queued" | "running" | "success" | "failed" | "canceled";
+    started_at: string | null;
+    finished_at: string | null;
+    error_summary: string | null;
+  }>;
+};
+
 export type GatewayPipelineGraph = {
   nodes: Array<{
     id: string;
@@ -185,6 +196,11 @@ export interface KovalskyApiClient {
   getPipeline(id: string): Promise<GatewayPipelineResponse | null>;
   updatePipeline(pipeline: Pipeline): Promise<{ pipelineId: string }>;
   createRun(request: CreateRunRequest): Promise<CreateRunResponse>;
+  listRuns(input?: {
+    pipelineId?: string;
+    statuses?: Array<"queued" | "running" | "success" | "failed" | "canceled">;
+    limit?: number;
+  }): Promise<GatewayRunListResponse>;
   getRun(runId: string): Promise<GatewayRunSnapshot | null>;
   cancelRun(runId: string): Promise<{ ok: boolean }>;
   getStepLogs(runId: string, stepRunId: string, tail?: number): Promise<{ lines: string[] }>;

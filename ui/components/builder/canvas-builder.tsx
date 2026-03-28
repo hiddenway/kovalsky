@@ -264,6 +264,7 @@ function CanvasBuilderInner(): React.JSX.Element {
   const runHydrated = useRunStore((state) => state.hydrated);
   const activeRunId = useRunStore((state) => state.activeRunId);
   const records = useRunStore((state) => state.records);
+  const recordsRef = useRef(records);
   const initRuns = useRunStore((state) => state.init);
   const startRun = useRunStore((state) => state.startRun);
   const cancelRun = useRunStore((state) => state.cancelRun);
@@ -471,6 +472,10 @@ function CanvasBuilderInner(): React.JSX.Element {
   }, [initRuns]);
 
   useEffect(() => {
+    recordsRef.current = records;
+  }, [records]);
+
+  useEffect(() => {
     void getApiClient()
       .getAgents()
       .then(setAgents)
@@ -478,6 +483,48 @@ function CanvasBuilderInner(): React.JSX.Element {
         setAgents(AGENT_DEFINITIONS);
       });
   }, []);
+
+  useEffect(() => {
+    if (!runHydrated || !activePipelineId) {
+      return;
+    }
+
+    let disposed = false;
+    const syncLatestPipelineRun = async (): Promise<void> => {
+      try {
+        const api = getApiClient();
+        const response = await api.listRuns({
+          pipelineId: activePipelineId,
+          limit: 8,
+        });
+        if (disposed) {
+          return;
+        }
+
+        const knownRunIds = new Set(recordsRef.current.map((record) => record.run.id));
+        const newestUnknown = response.runs.find((run) => !knownRunIds.has(run.id));
+        if (!newestUnknown) {
+          return;
+        }
+
+        const snapshotFromKnownRun = recordsRef.current.find((record) => record.pipelineSnapshot.id === activePipelineId)?.pipelineSnapshot;
+        const snapshot = snapshotFromKnownRun ?? getActivePipelineSnapshot();
+        attachExternalRun(newestUnknown.id, snapshot);
+      } catch {
+        // best-effort sync for loop/trigger-created runs
+      }
+    };
+
+    void syncLatestPipelineRun();
+    const interval = window.setInterval(() => {
+      void syncLatestPipelineRun();
+    }, 2000);
+
+    return () => {
+      disposed = true;
+      window.clearInterval(interval);
+    };
+  }, [activePipelineId, attachExternalRun, getActivePipelineSnapshot, runHydrated]);
 
   const runPipeline = useCallback(async () => {
     const snapshot = getActivePipelineSnapshot();
