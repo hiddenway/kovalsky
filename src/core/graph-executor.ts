@@ -698,10 +698,12 @@ export class GraphExecutor {
     }
 
     if (params.node.agentId === "openclaw") {
-      const extracted = this.extractOpenClawPayloadTextFromLog(params.stepLogPath);
-      if (extracted) {
-        this.writeNodeMessage(params.runId, params.node.id, "agent", "run", `Post-step report:\n${extracted}`);
-        return;
+      if (params.status === "success") {
+        const extracted = this.extractOpenClawPayloadTextFromLog(params.stepLogPath);
+        if (extracted) {
+          this.writeNodeMessage(params.runId, params.node.id, "agent", "run", `Post-step report:\n${extracted}`);
+          return;
+        }
       }
 
       const content = this.buildOpenClawPostStepReport({
