@@ -11,7 +11,7 @@ function isTerminalRun(status: RunStatus, loopWaiting?: boolean): boolean {
   return FINAL_STATUSES.includes(status) && loopWaiting !== true;
 }
 
-const controllers = new Map<string, { canceled: boolean }>();
+const controllers = new Map<string, { canceled: boolean; polling: boolean }>();
 
 function persist(records: RunRecord[]): void {
   writeRunsToStorage(records);
@@ -371,7 +371,7 @@ export const useRunStore = create<RunState>((set, get) => ({
       });
       runId = started.runId;
 
-      controllers.set(runId, { canceled: false });
+      controllers.set(runId, { canceled: false, polling: false });
 
       set((state) => {
         const records = state.records.map((record) =>
@@ -419,10 +419,20 @@ export const useRunStore = create<RunState>((set, get) => ({
       throw error;
     }
 
+    const activeController = controllers.get(runId);
+    if (activeController?.polling) {
+      return runId;
+    }
+    if (activeController) {
+      activeController.polling = true;
+    } else {
+      controllers.set(runId, { canceled: false, polling: true });
+    }
+
     void (async () => {
       try {
-        const controller = controllers.get(runId);
         while (true) {
+          const controller = controllers.get(runId);
           if (controller?.canceled) {
             controller.canceled = false;
             await api.cancelRun(runId).catch(() => {
@@ -501,14 +511,24 @@ export const useRunStore = create<RunState>((set, get) => ({
     }
 
     if (!controllers.has(runId)) {
-      controllers.set(runId, { canceled: false });
+      controllers.set(runId, { canceled: false, polling: false });
+    }
+
+    const activeController = controllers.get(runId);
+    if (activeController?.polling) {
+      return;
+    }
+    if (activeController) {
+      activeController.polling = true;
+    } else {
+      controllers.set(runId, { canceled: false, polling: true });
     }
 
     void (async () => {
       try {
         const api = getApiClient();
-        const controller = controllers.get(runId);
         while (true) {
+          const controller = controllers.get(runId);
           if (controller?.canceled) {
             controller.canceled = false;
             await api.cancelRun(runId).catch(() => {
