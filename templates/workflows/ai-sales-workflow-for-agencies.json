@@ -1,0 +1,133 @@
+{
+  "id": "pipe-7f2c8a20-0c9d-4b1f-a97b-7ce9f4cc2c1d",
+  "name": "AI Sales Workflow for Agencies",
+  "description": "Agency deal-finding workflow engine: lead discovery, enrichment, website/business analysis, outreach drafts, follow-ups, and lead briefs.",
+  "tags": [
+    "sales",
+    "agency",
+    "outbound",
+    "lead-gen",
+    "demo"
+  ],
+  "workspacePath": "~/projects/agency-outbound-demo",
+  "chatRerunMode": "node",
+  "clearNodeChatContextOnRun": false,
+  "nodes": [
+    {
+      "id": "node-4ab7f8c0-1f63-4dc8-b29c-0a6f19aa2e9f",
+      "type": "agentNode",
+      "position": {
+        "x": 120,
+        "y": 120
+      },
+      "data": {
+        "agentId": "openclaw",
+        "customName": "Lead Finder - Market Scout",
+        "goal": "Find high-fit B2B leads for service businesses (marketing agencies, dev shops, AI automation agencies).\n\nTasks:\n- discover 40-80 candidate companies from public sources\n- prioritize companies likely to buy external services\n- collect structured fields: company_name, domain, niche, geo, estimated_size, possible_decision_maker, source_url\n- avoid obvious duplicates\n\nOutput:\n- save JSON to ./sales-output/leads_raw.json\n- include only evidence-backed entries"
+      },
+      "width": 340,
+      "height": 370,
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "node-9d90d4f9-7c4f-4565-a49f-4b8d2f3766bb",
+      "type": "agentNode",
+      "position": {
+        "x": 520,
+        "y": 100
+      },
+      "data": {
+        "agentId": "openclaw",
+        "customName": "Enrichment + Website Analyzer",
+        "goal": "Enrich and qualify leads from ./sales-output/leads_raw.json.\n\nTasks:\n- visit each company website and infer business model/service maturity\n- extract practical qualification signals: service pages, hiring signals, outdated UX, missing conversion paths, content cadence\n- score each lead (0-100) with short rationale\n- keep only top 25 leads\n\nOutput:\n- save JSON to ./sales-output/leads_scored.json\n- each lead must contain: company_name, domain, score, rationale, enrichment_notes, proof_links"
+      },
+      "width": 340,
+      "height": 430,
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "node-3f2ea640-2d27-4d7f-b857-4eaf23d4f133",
+      "type": "agentNode",
+      "position": {
+        "x": 940,
+        "y": 90
+      },
+      "data": {
+        "agentId": "codex-cli",
+        "customName": "Personalized Outreach Writer",
+        "goal": "Create personalized outbound drafts from ./sales-output/leads_scored.json for top 25 leads.\n\nFor each lead generate:\n- 1 cold email (short, concrete, non-generic)\n- 1 LinkedIn DM\n- 2 follow-up messages (D+3 and D+7)\n\nRules:\n- reference real business context from enrichment_notes\n- avoid generic AI SDR tone\n- focus on agency outcomes (pipeline, conversion, speed, delivery quality)\n\nOutput:\n- save JSON to ./sales-output/outreach_sequences.json"
+      },
+      "width": 340,
+      "height": 430,
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "node-8eea1db7-b7a9-4307-a09e-8d674ef36830",
+      "type": "agentNode",
+      "position": {
+        "x": 1360,
+        "y": 120
+      },
+      "data": {
+        "agentId": "codex-cli",
+        "customName": "Lead Brief Packager",
+        "goal": "Assemble final deal-finding package using:\n- ./sales-output/leads_scored.json\n- ./sales-output/outreach_sequences.json\n\nDeliverables:\n- executive summary (ICP, strongest verticals, main buying signals)\n- top 10 priority leads with reasons\n- full lead briefs with recommended angle and first message\n- campaign next steps for SDR/AE handoff\n\nOutput:\n- save report to ./sales-output/lead_briefs.md\n- save compact CSV to ./sales-output/lead_briefs.csv"
+      },
+      "width": 340,
+      "height": 390,
+      "selected": false,
+      "dragging": false
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge-cf1777d4-3de5-4f90-a8c2-6f1714f1944e",
+      "source": "node-4ab7f8c0-1f63-4dc8-b29c-0a6f19aa2e9f",
+      "target": "node-9d90d4f9-7c4f-4565-a49f-4b8d2f3766bb",
+      "markerEnd": {
+        "type": "arrowclosed",
+        "width": 20,
+        "height": 20,
+        "color": "#71717a"
+      },
+      "style": {
+        "strokeWidth": 3,
+        "stroke": "#71717a"
+      }
+    },
+    {
+      "id": "edge-4eaec2bf-b86d-4354-8a78-c72b95f36a42",
+      "source": "node-9d90d4f9-7c4f-4565-a49f-4b8d2f3766bb",
+      "target": "node-3f2ea640-2d27-4d7f-b857-4eaf23d4f133",
+      "markerEnd": {
+        "type": "arrowclosed",
+        "width": 20,
+        "height": 20,
+        "color": "#71717a"
+      },
+      "style": {
+        "strokeWidth": 3,
+        "stroke": "#71717a"
+      }
+    },
+    {
+      "id": "edge-2f7b0ab2-c2e6-4cc2-a0ab-a6cd8637fadb",
+      "source": "node-3f2ea640-2d27-4d7f-b857-4eaf23d4f133",
+      "target": "node-8eea1db7-b7a9-4307-a09e-8d674ef36830",
+      "markerEnd": {
+        "type": "arrowclosed",
+        "width": 20,
+        "height": 20,
+        "color": "#71717a"
+      },
+      "style": {
+        "strokeWidth": 3,
+        "stroke": "#71717a"
+      }
+    }
+  ],
+  "updatedAt": "2026-03-29T19:00:00.000Z"
+}
