@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { getApiClient } from "@/lib/api/client";
+import type { TriggerListItem } from "@/lib/api/contracts";
 import type { RunRecord, StepRun } from "@/lib/types";
 import { useRunStore } from "@/stores/run-store";
 
@@ -53,16 +55,71 @@ function statusClass(status: string): string {
   return "border-zinc-700 bg-zinc-800 text-zinc-300";
 }
 
+function triggerStatusClass(status: TriggerListItem["status"]): string {
+  if (status === "active" || status === "working") {
+    return "border-amber-700/60 bg-amber-950 text-amber-300";
+  }
+  if (status === "paused") {
+    return "border-zinc-700 bg-zinc-900 text-zinc-300";
+  }
+  return "border-zinc-700 bg-zinc-900 text-zinc-500";
+}
+
 export function RunsPage(): React.JSX.Element {
   const hydrated = useRunStore((state) => state.hydrated);
   const records = useRunStore((state) => state.records);
   const init = useRunStore((state) => state.init);
   const cancelRun = useRunStore((state) => state.cancelRun);
   const [openLogsByRun, setOpenLogsByRun] = useState<Record<string, string | null>>({});
+  const [triggers, setTriggers] = useState<TriggerListItem[]>([]);
+  const [triggersLoading, setTriggersLoading] = useState(false);
+  const [triggersError, setTriggersError] = useState("");
+  const [stoppingTriggerKey, setStoppingTriggerKey] = useState("");
 
   useEffect(() => {
     init();
   }, [init]);
+
+  useEffect(() => {
+    let disposed = false;
+    const api = getApiClient();
+
+    const loadTriggers = async (silent = false): Promise<void> => {
+      if (!silent) {
+        setTriggersLoading(true);
+      }
+      try {
+        const payload = await api.listTriggers();
+        if (disposed) {
+          return;
+        }
+        setTriggers(payload.triggers);
+        setTriggersError("");
+      } catch (error) {
+        if (disposed) {
+          return;
+        }
+        if (!silent) {
+          setTriggers([]);
+        }
+        setTriggersError(error instanceof Error ? error.message : "Failed to load triggers");
+      } finally {
+        if (!disposed && !silent) {
+          setTriggersLoading(false);
+        }
+      }
+    };
+
+    void loadTriggers();
+    const interval = window.setInterval(() => {
+      void loadTriggers(true);
+    }, 2000);
+
+    return () => {
+      disposed = true;
+      window.clearInterval(interval);
+    };
+  }, []);
 
   const sorted = useMemo(
     () =>
@@ -70,6 +127,10 @@ export function RunsPage(): React.JSX.Element {
         .slice()
         .sort((left, right) => right.run.startedAt.localeCompare(left.run.startedAt)),
     [records],
+  );
+  const activeTriggers = useMemo(
+    () => triggers.filter((trigger) => trigger.status === "active" || trigger.status === "working"),
+    [triggers],
   );
 
   if (!hydrated) {
@@ -97,6 +158,104 @@ export function RunsPage(): React.JSX.Element {
             </Link>
           </div>
         </div>
+
+        <section className="mt-5 rounded-xl border border-zinc-800 bg-zinc-900/70 p-4">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h2 className="text-base font-semibold">Triggers</h2>
+              <p className="text-xs text-zinc-400">
+                Total: {triggers.length} | Active: {activeTriggers.length}
+              </p>
+            </div>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={async () => {
+                setTriggersLoading(true);
+                setTriggersError("");
+                try {
+                  const payload = await getApiClient().listTriggers();
+                  setTriggers(payload.triggers);
+                } catch (error) {
+                  setTriggersError(error instanceof Error ? error.message : "Failed to load triggers");
+                } finally {
+                  setTriggersLoading(false);
+                }
+              }}
+            >
+              Refresh
+            </Button>
+          </div>
+
+          {triggersLoading ? (
+            <p className="mt-3 text-sm text-zinc-400">Loading triggers...</p>
+          ) : triggersError ? (
+            <p className="mt-3 text-sm text-rose-300">{triggersError}</p>
+          ) : triggers.length === 0 ? (
+            <p className="mt-3 text-sm text-zinc-500">No triggers configured.</p>
+          ) : (
+            <div className="mt-3 max-h-72 space-y-2 overflow-y-auto pr-1">
+              {triggers.map((trigger) => {
+                const triggerKey = `${trigger.pipelineId}:${trigger.nodeId}`;
+                const canStop = trigger.status === "active" || trigger.status === "working";
+                const isStopping = stoppingTriggerKey === triggerKey;
+                return (
+                  <article key={triggerKey} className="rounded-md border border-zinc-800 bg-zinc-950/70 p-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="truncate text-sm font-medium">{trigger.pipelineName}</p>
+                      <span
+                        className={`rounded border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${triggerStatusClass(trigger.status)}`}
+                      >
+                        {trigger.status}
+                      </span>
+                    </div>
+                    <p className="mt-1 text-xs text-zinc-400">
+                      Pipeline: {trigger.pipelineId} | Node: {trigger.nodeId} | Type: {trigger.configType ?? "unknown"}
+                    </p>
+                    <p className="mt-1 line-clamp-2 text-xs text-zinc-300">{trigger.goal || "Goal is empty"}</p>
+                    {trigger.lastError ? (
+                      <p className="mt-1 line-clamp-2 text-xs text-rose-300">Last error: {trigger.lastError}</p>
+                    ) : null}
+                    <p className="mt-1 text-xs text-zinc-500">
+                      Last check: {trigger.lastCheckAt ? new Date(trigger.lastCheckAt).toLocaleString() : "—"}
+                    </p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <Link
+                        href={`/builder?pipelineId=${trigger.pipelineId}`}
+                        className="rounded-md border border-cyan-400/50 bg-cyan-500/20 px-3 py-1.5 text-sm text-cyan-100 hover:bg-cyan-500/30"
+                      >
+                        Open
+                      </Link>
+                      <Button
+                        type="button"
+                        variant="danger"
+                        disabled={!canStop || isStopping}
+                        onClick={async () => {
+                          setStoppingTriggerKey(triggerKey);
+                          try {
+                            await getApiClient().pauseTrigger({
+                              pipelineId: trigger.pipelineId,
+                              nodeId: trigger.nodeId,
+                            });
+                            const payload = await getApiClient().listTriggers();
+                            setTriggers(payload.triggers);
+                            setTriggersError("");
+                          } catch (error) {
+                            setTriggersError(error instanceof Error ? error.message : "Failed to stop trigger");
+                          } finally {
+                            setStoppingTriggerKey("");
+                          }
+                        }}
+                      >
+                        {isStopping ? "Stopping..." : "Stop"}
+                      </Button>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          )}
+        </section>
 
         {sorted.length === 0 ? (
           <div className="mt-5 rounded-xl border border-zinc-800 bg-zinc-900/70 p-4 text-sm text-zinc-400">No runs yet.</div>

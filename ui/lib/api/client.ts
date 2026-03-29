@@ -542,6 +542,19 @@ class RestKovalskyApiClient implements KovalskyApiClient {
     return (await response.json()) as Awaited<ReturnType<KovalskyApiClient["generateTrigger"]>>;
   }
 
+  async listTriggers() {
+    const response = await this.fetchWithFallback("/triggers", {
+      method: "GET",
+      cache: "no-store",
+    });
+
+    if (!response.ok) {
+      await this.throwHttpError(response, "Failed to load triggers");
+    }
+
+    return (await response.json()) as Awaited<ReturnType<KovalskyApiClient["listTriggers"]>>;
+  }
+
   async getTriggerStatus(pipelineId: string, nodeId: string) {
     const response = await this.fetchWithFallback(`/triggers/${pipelineId}/${nodeId}/status`, {
       method: "GET",

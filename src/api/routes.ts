@@ -117,6 +117,14 @@ const runListQuerySchema = z.object({
   limit: z.coerce.number().int().positive().max(200).optional(),
 });
 
+function isObjectRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function asString(value: unknown): string {
+  return typeof value === "string" ? value : "";
+}
+
 export async function registerRoutes(app: FastifyInstance<any, any, any, any>, deps: RoutesDeps): Promise<void> {
   app.get("/health", async () => ({ ok: true, version: deps.version }));
 
@@ -204,6 +212,72 @@ export async function registerRoutes(app: FastifyInstance<any, any, any, any>, d
     }
 
     return { templates };
+  });
+
+  app.get("/triggers", async () => {
+    const pipelines = deps.db.listPipelines();
+    const triggers: Array<{
+      pipelineId: string;
+      pipelineName: string;
+      pipelineUpdatedAt: string;
+      nodeId: string;
+      goal: string;
+      status: "draft" | "paused" | "active" | "working";
+      configType: "webhook" | "script_poll" | "agent_poll" | null;
+      summary: string | null;
+      webhookPath: string | null;
+      scriptPath: string | null;
+      lastCheckAt: string | null;
+      lastFireAt: string | null;
+      lastRunId: string | null;
+      lastError: string | null;
+    }> = [];
+
+    for (const pipeline of pipelines) {
+      let graph: PipelineGraph | null = null;
+      try {
+        graph = JSON.parse(pipeline.graph_json) as PipelineGraph;
+      } catch {
+        continue;
+      }
+
+      for (const node of graph.nodes) {
+        if (node.agentId !== "trigger") {
+          continue;
+        }
+
+        const triggerStatus = deps.triggerService.getTriggerStatus({
+          pipelineId: pipeline.id,
+          nodeId: node.id,
+        });
+        const settings = isObjectRecord(node.settings) ? node.settings : {};
+        const triggerSettings = isObjectRecord(settings.trigger) ? settings.trigger : {};
+        const generated = isObjectRecord(triggerSettings.generated) ? triggerSettings.generated : {};
+        const generatedTypeRaw = asString(generated.type).trim().toLowerCase();
+        const configType = generatedTypeRaw === "webhook" || generatedTypeRaw === "script_poll" || generatedTypeRaw === "agent_poll"
+          ? generatedTypeRaw
+          : null;
+
+        triggers.push({
+          pipelineId: pipeline.id,
+          pipelineName: pipeline.name,
+          pipelineUpdatedAt: pipeline.updated_at,
+          nodeId: node.id,
+          goal: (node.goal ?? "").trim(),
+          status: triggerStatus.status,
+          configType,
+          summary: triggerStatus.summary ?? null,
+          webhookPath: triggerStatus.webhookPath ?? null,
+          scriptPath: triggerStatus.scriptPath ?? null,
+          lastCheckAt: triggerStatus.lastCheckAt ?? null,
+          lastFireAt: triggerStatus.lastFireAt ?? null,
+          lastRunId: triggerStatus.lastRunId ?? null,
+          lastError: triggerStatus.lastError ?? null,
+        });
+      }
+    }
+
+    return { triggers };
   });
 
   app.post("/agents/validate", async (request, reply) => {

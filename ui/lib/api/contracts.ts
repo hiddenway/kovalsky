@@ -189,6 +189,23 @@ export type TriggerStatusResponse = {
   history?: TriggerHistoryEntry[];
 };
 
+export type TriggerListItem = {
+  pipelineId: string;
+  pipelineName: string;
+  pipelineUpdatedAt: string;
+  nodeId: string;
+  goal: string;
+  status: "draft" | "paused" | "active" | "working";
+  configType: "webhook" | "script_poll" | "agent_poll" | null;
+  summary: string | null;
+  webhookPath: string | null;
+  scriptPath: string | null;
+  lastCheckAt: string | null;
+  lastFireAt: string | null;
+  lastRunId: string | null;
+  lastError: string | null;
+};
+
 export interface KovalskyApiClient {
   getAgents(): Promise<AgentDefinition[]>;
   getWorkflowTemplates(): Promise<{ templates: Pipeline[] }>;
@@ -307,6 +324,7 @@ export interface KovalskyApiClient {
     settings?: Record<string, unknown>;
     messages?: TriggerChatMessage[];
   }): Promise<TriggerGenerationResponse>;
+  listTriggers(): Promise<{ triggers: TriggerListItem[] }>;
   getTriggerStatus(pipelineId: string, nodeId: string): Promise<TriggerStatusResponse>;
   activateTrigger(input: { pipelineId: string; nodeId: string }): Promise<TriggerStatusResponse>;
   pauseTrigger(input: { pipelineId: string; nodeId: string }): Promise<TriggerStatusResponse>;
