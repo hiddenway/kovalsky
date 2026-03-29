@@ -990,9 +990,28 @@ export class TriggerService {
       throw new Error("Trigger workspace path is missing or invalid.");
     }
 
-    const config = triggerState.generated;
+    let config = triggerState.generated;
     if (!config) {
       throw new Error("Generate the trigger before activating it.");
+    }
+
+    // Ensure every script_poll trigger writes to an isolated per-node path.
+    // This prevents multiple trigger nodes from overwriting the same check-trigger.mjs file.
+    if (config.type === "script_poll") {
+      const isolatedScriptPath = this.writeScriptFile(
+        workspacePath,
+        input.nodeId,
+        config.scriptFileName,
+        config.scriptContent,
+      );
+      config = {
+        ...config,
+        scriptPath: isolatedScriptPath,
+      };
+      this.persistTriggerState(input.pipelineId, input.nodeId, {
+        workspacePath,
+        generated: config,
+      });
     }
 
     const existingWatcher = this.watchers.get(watcherKey);
@@ -1782,7 +1801,8 @@ export class TriggerService {
   }
 
   private writeScriptFile(workspacePath: string, nodeId: string, fileName: string, content: string): string {
-    const targetDir = path.join(workspacePath, ".kovalsky", "triggers");
+    const nodeDir = sanitizeFileName(nodeId, "trigger-node");
+    const targetDir = path.join(workspacePath, ".kovalsky", "triggers", nodeDir);
     fs.mkdirSync(targetDir, { recursive: true });
     const targetPath = path.join(targetDir, sanitizeFileName(fileName, nodeId));
     fs.writeFileSync(targetPath, `${content.trim()}\n`, "utf8");
