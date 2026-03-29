@@ -94,9 +94,11 @@ function extractOpenClawFailureSignal(line: string): string | null {
     /(?:\[tools\]\s+exec failed:\s*(?:zsh:\d+:\s*unmatched|.*syntax error|.*unexpected eof|.*invalid (?:json|regular expression)|.*failed to start cli))/i;
   const fatalExecSummaryPattern =
     /(?:exec:\s*`[^`]*`\s*failed:\s*(?:zsh:\d+:\s*unmatched|.*syntax error|.*unexpected eof|.*invalid (?:json|regular expression)|.*failed to start cli))/i;
+  const timedOutPattern =
+    /(?:embedded run timeout|profile .* timed out \(possible rate limit\)|request timed out before a response was generated)/i;
 
   const failurePattern = new RegExp(
-    `${browserFailurePattern.source}|${fatalExecFailurePattern.source}|${fatalExecSummaryPattern.source}`,
+    `${browserFailurePattern.source}|${fatalExecFailurePattern.source}|${fatalExecSummaryPattern.source}|${timedOutPattern.source}`,
     "i",
   );
   if (!failurePattern.test(normalized)) {

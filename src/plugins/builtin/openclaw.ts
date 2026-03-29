@@ -1058,7 +1058,7 @@ export const openclawPlugin: AgentPlugin = {
         ];
       }
 
-      if (isolatedStateDir && statePrep.isolated) {
+      if (isolatedStateDir) {
         try {
           applyWorkspaceOverrideToState({
             stateDir: isolatedStateDir,
@@ -1074,7 +1074,7 @@ export const openclawPlugin: AgentPlugin = {
               : null,
           });
         } catch {
-          // keep running with copied state if override fails
+          // Keep running even if workspace override fails.
         }
       }
 

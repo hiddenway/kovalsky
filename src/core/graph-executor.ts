@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import path from "node:path";
 import type pino from "pino";
 import { ArtifactResolver } from "../artifacts/resolver";
 import { ArtifactStore } from "../artifacts/store";
@@ -198,6 +199,10 @@ export class GraphExecutor {
           .filter(Boolean)
           .join("\n\n");
         const maxAttempts = this.resolveStepMaxAttempts(node.agentId, node.settings ?? {});
+        const expectedOutputFiles = this.extractExpectedOutputFiles([
+          node.goal ?? "",
+          nodePlan.goalAddendum ?? "",
+        ].filter(Boolean).join("\n"));
 
         this.writeNodeMessage(
           runId,
@@ -388,6 +393,18 @@ export class GraphExecutor {
 
               lastExitCode = result.exitCode;
               if (result.exitCode === 0) {
+                const missingOutputFiles = this.findMissingExpectedOutputFiles(
+                  overrides.workspacePath,
+                  expectedOutputFiles,
+                );
+                if (missingOutputFiles.length > 0) {
+                  const missingSummary = `Expected output files not found in workspace: ${missingOutputFiles.join(", ")}`;
+                  this.appendStepLogLine(stepLogPath, "stderr", missingSummary);
+                  lastExitCode = 1;
+                  lastError = missingSummary;
+                  continue;
+                }
+
                 const artifactTitles = result.artifactIds
                   .map((artifactId) => this.db.getArtifact(artifactId))
                   .filter((artifact): artifact is ArtifactRecord => Boolean(artifact))
@@ -1154,6 +1171,52 @@ export class GraphExecutor {
     }
 
     return GraphExecutor.DEFAULT_SELF_HEAL_ATTEMPTS;
+  }
+
+  private extractExpectedOutputFiles(goal: string): string[] {
+    const expected = new Set<string>();
+    const lines = goal.split(/\r?\n/);
+
+    for (const rawLine of lines) {
+      const line = rawLine.trim();
+      if (!line) {
+        continue;
+      }
+
+      const lowered = line.toLowerCase();
+      if (!/(save|write|export|create|output)/.test(lowered)) {
+        continue;
+      }
+
+      const matches = line.match(/(?:\.{1,2}\/)[^\s`"'<>|]+/g) ?? [];
+      for (const match of matches) {
+        const normalized = match.replace(/[),.;:!?]+$/g, "").trim();
+        if (!normalized) {
+          continue;
+        }
+        if (!/\.[A-Za-z0-9]{1,10}$/.test(normalized)) {
+          continue;
+        }
+        expected.add(normalized);
+      }
+    }
+
+    return [...expected];
+  }
+
+  private findMissingExpectedOutputFiles(workspacePath: string, expectedFiles: string[]): string[] {
+    if (expectedFiles.length === 0) {
+      return [];
+    }
+
+    const missing: string[] = [];
+    for (const expectedFile of expectedFiles) {
+      const fullPath = path.resolve(workspacePath, expectedFile);
+      if (!fs.existsSync(fullPath)) {
+        missing.push(expectedFile);
+      }
+    }
+    return missing;
   }
 
   private buildAttemptGoal(baseGoal: string, attempt: number, maxAttempts: number, previousError: string | null): string {
