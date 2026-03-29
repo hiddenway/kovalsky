@@ -699,19 +699,21 @@ export class GraphExecutor {
 
     if (params.node.agentId === "openclaw") {
       if (params.status === "success") {
-        const extracted = this.extractOpenClawPayloadTextFromLog(params.stepLogPath);
+        const extracted = this.sanitizePostStepReportContent(
+          this.extractOpenClawPayloadTextFromLog(params.stepLogPath) ?? "",
+        );
         if (extracted) {
           this.writeNodeMessage(params.runId, params.node.id, "agent", "run", `Post-step report:\n${extracted}`);
           return;
         }
       }
 
-      const content = this.buildOpenClawPostStepReport({
+      const content = this.sanitizePostStepReportContent(this.buildOpenClawPostStepReport({
         status: params.status,
         errorSummary: params.errorSummary,
         artifactTitles: params.artifactTitles,
         logTail: this.readStepLogTail(params.stepLogPath, 20),
-      });
+      }));
       if (content) {
         this.writeNodeMessage(params.runId, params.node.id, "agent", "run", `Post-step report:\n${content}`);
       }
@@ -749,7 +751,7 @@ export class GraphExecutor {
           timeoutMs: reportTimeoutMs,
         });
 
-        const content = report.trim();
+        const content = this.sanitizePostStepReportContent(report);
         if (!content) {
           return;
         }
@@ -827,6 +829,42 @@ export class GraphExecutor {
     }
 
     return lines.join("\n");
+  }
+
+  private sanitizePostStepReportContent(raw: string): string {
+    const stripAnsi = (input: string): string => input.replace(/\x1B\[[0-9;]*m/g, "");
+    const lines = raw
+      .split(/\r?\n/)
+      .map((line) => stripAnsi(line).trim())
+      .map((line) => line.replace(/^Post-step report:\s*/i, "").trim())
+      .filter(Boolean)
+      .filter((line) => !/^do not add machine-readable decision lines\.?$/i.test(line))
+      .filter((line) => !/^at the very end add one strict machine-readable line:/i.test(line))
+      .filter((line) => !/^kovalsky_decision:/i.test(line))
+      .filter((line) => !/^\*?\*?upstream handoff\*?\*?:?$/i.test(line))
+      .filter((line) => !/^[-*]\s*\*?\*?upstream handoff\*?\*?:?$/i.test(line))
+      .filter((line) => !/^[-*]\s*tests:\s*not run\b/i.test(line))
+      .filter((line) => !/^[-*]\s*\d[\d\s]{2,}$/.test(line))
+      .filter((line) => !/^\s*[\[\]{}(),:]+\s*$/.test(line))
+      .map((line) => {
+        if (/^[-*]\s+(summary:|tests:|final outcome(?: and verification result)?:|if you want )/i.test(line)) {
+          return line.replace(/^[-*]\s+/, "");
+        }
+        return line;
+      });
+
+    if (lines.length === 0) {
+      return "";
+    }
+
+    const dashedCount = lines.filter((line) => /^[-*]\s+/.test(line)).length;
+    const normalizedLines = dashedCount / lines.length >= 0.8
+      ? lines.map((line) => line.replace(/^[-*]\s+/, ""))
+      : lines;
+
+    const deduped = normalizedLines.filter((line, index) => index === 0 || line !== normalizedLines[index - 1]);
+    const combined = deduped.join("\n").trim();
+    return /[A-Za-zА-Яа-яЁё]{3}/.test(combined) ? combined : "";
   }
 
   private appendStepLogLine(stepLogPath: string, stream: "stdout" | "stderr", line: string): void {
