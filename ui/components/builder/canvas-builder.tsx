@@ -17,6 +17,7 @@ import { InspectorPanel } from "@/components/builder/inspector-panel";
 import { TopBar } from "@/components/builder/top-bar";
 import { getApiClient } from "@/lib/api/client";
 import { AGENT_DEFINITIONS, isLoopAgent, isTriggerAgent } from "@/lib/agents";
+import { createInstrumentPreset, INSTRUMENT_DEFINITIONS } from "@/lib/instruments";
 import { isUserCanceledFileDialog, savePipelineToFile } from "@/lib/pipeline-file-save";
 import type { AgentDefinition } from "@/lib/types";
 import { usePipelineStore } from "@/stores/pipeline-store";
@@ -686,6 +687,39 @@ function CanvasBuilderInner(): React.JSX.Element {
     [addNodeFromAgent],
   );
 
+  const addInstrumentAtPosition = useCallback(
+    (instrumentId: string, position?: XYPosition) => {
+      const preset = createInstrumentPreset(instrumentId);
+      if (!preset) {
+        pushToast({
+          title: "Instrument not found",
+          description: instrumentId,
+          tone: "error",
+        });
+        return;
+      }
+
+      addNodeFromAgent(preset.agentId, position);
+      if (preset.customName) {
+        setSelectedNodeName(preset.customName);
+      }
+      setSelectedNodeGoal(preset.goal);
+      setSelectedNodeSettings(preset.settings);
+      pushToast({
+        title: `${preset.customName ?? instrumentId} added`,
+        description: "Instrument node preset created on canvas.",
+        tone: "success",
+      });
+    },
+    [
+      addNodeFromAgent,
+      pushToast,
+      setSelectedNodeGoal,
+      setSelectedNodeName,
+      setSelectedNodeSettings,
+    ],
+  );
+
   const handleExport = useCallback(() => {
     try {
       const data = exportActivePipeline();
@@ -748,7 +782,8 @@ function CanvasBuilderInner(): React.JSX.Element {
       }
 
       const agentId = event.dataTransfer.getData("application/kovalsky-agent");
-      if (!agentId) {
+      const instrumentId = event.dataTransfer.getData("application/kovalsky-instrument");
+      if (!agentId && !instrumentId) {
         return;
       }
 
@@ -757,9 +792,15 @@ function CanvasBuilderInner(): React.JSX.Element {
         y: event.clientY,
       });
 
-      addAgentAtPosition(agentId, position);
+      if (agentId) {
+        addAgentAtPosition(agentId, position);
+        return;
+      }
+      if (instrumentId) {
+        addInstrumentAtPosition(instrumentId, position);
+      }
     },
-    [addAgentAtPosition, instance],
+    [addAgentAtPosition, addInstrumentAtPosition, instance],
   );
 
   if (!hydrated || !runHydrated) {
@@ -800,7 +841,12 @@ function CanvasBuilderInner(): React.JSX.Element {
           gridTemplateColumns: `${leftPanelWidth}px 6px minmax(0,1fr) 6px ${rightPanelWidth}px`,
         }}
       >
-        <AgentsLibrary agents={agents} onAddAgent={(agentId) => addAgentAtPosition(agentId)} />
+        <AgentsLibrary
+          agents={agents}
+          instruments={INSTRUMENT_DEFINITIONS}
+          onAddAgent={(agentId) => addAgentAtPosition(agentId)}
+          onAddInstrument={(instrumentId) => addInstrumentAtPosition(instrumentId)}
+        />
 
         <div
           className="cursor-col-resize bg-zinc-900/40 transition hover:bg-cyan-500/30"

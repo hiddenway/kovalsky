@@ -886,7 +886,7 @@ export function InspectorPanel({
               </div>
 
               <p className="text-[11px] text-zinc-500">
-                Trigger nodes do not react to manual workflow Run. Generate the trigger first, then activate it so it starts the workflow itself.
+                Trigger nodes do not react to manual workflow Run. Generate a trigger (or use a preset instrument trigger), then activate it so it starts the workflow itself.
               </p>
               {!pipeline.workspacePath.trim() ? (
                 <p className="text-[11px] text-amber-300">
