@@ -559,7 +559,7 @@ export function InspectorPanel({
 
       if (isTriggerNode) {
         return (
-          <aside className="h-full overflow-y-auto border-l border-zinc-800 bg-zinc-950/70 p-3">
+          <aside className="flex h-full min-h-0 flex-col border-l border-zinc-800 bg-zinc-950/70 p-3">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <h2 className="text-sm font-semibold text-zinc-100">Trigger Chat</h2>
@@ -571,7 +571,7 @@ export function InspectorPanel({
               {renderNodeModeSwitch("chat")}
             </div>
 
-            <div className="mt-3 flex h-[calc(100%-44px)] min-h-[360px] flex-col">
+            <div className="mt-3 flex min-h-0 flex-1 flex-col">
               <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
                 {triggerConversation.length > 0 ? triggerConversation.map((message) => (
                   <div
@@ -602,30 +602,32 @@ export function InspectorPanel({
                 <div ref={chatBottomRef} />
               </div>
 
-              <form
-                className="mt-3 flex gap-2"
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  void sendTriggerChatMessage();
-                }}
-              >
-                <input
-                  value={triggerInput}
-                  onChange={(event) => setTriggerInput(event.target.value)}
-                  className="w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 outline-none ring-cyan-400/40 focus:ring"
-                  placeholder="Add clarification or answer a trigger question..."
-                />
-                <Button type="submit" disabled={isTriggerBusy || !pipeline.workspacePath.trim()}>
-                  Send
-                </Button>
-              </form>
+              <div className="sticky bottom-0 z-10 -mx-3 mt-3 border-t border-zinc-800 bg-zinc-950/95 px-3 pb-3 pt-3 backdrop-blur">
+                <form
+                  className="flex gap-2"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    void sendTriggerChatMessage();
+                  }}
+                >
+                  <input
+                    value={triggerInput}
+                    onChange={(event) => setTriggerInput(event.target.value)}
+                    className="w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 outline-none ring-cyan-400/40 focus:ring"
+                    placeholder="Add clarification or answer a trigger question..."
+                  />
+                  <Button type="submit" disabled={isTriggerBusy || !pipeline.workspacePath.trim()}>
+                    Send
+                  </Button>
+                </form>
+              </div>
             </div>
           </aside>
         );
       }
 
       return (
-        <aside className="h-full overflow-y-auto border-l border-zinc-800 bg-zinc-950/70 p-3">
+        <aside className="flex h-full min-h-0 flex-col border-l border-zinc-800 bg-zinc-950/70 p-3">
           <div className="flex items-start justify-between gap-3">
             <div>
               <h2 className="text-sm font-semibold text-zinc-100">Agent Chat</h2>
@@ -637,7 +639,7 @@ export function InspectorPanel({
             {renderNodeModeSwitch("chat")}
           </div>
 
-          <div className="mt-3 flex h-[calc(100%-44px)] min-h-[360px] flex-col">
+          <div className="mt-3 flex min-h-0 flex-1 flex-col">
             <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
               {chatMessages.map((message) => (
                 <div
@@ -663,123 +665,125 @@ export function InspectorPanel({
               <div ref={chatBottomRef} />
             </div>
 
-            <form
-              className="mt-3 flex gap-2"
-              onSubmit={(event) => {
-                event.preventDefault();
-                const prompt = chatInput.trim();
-                if (!prompt) {
-                  return;
-                }
-                if (!selectedNodeId) {
-                  return;
-                }
-                const nodeId = selectedNodeId;
-
-                const userMessage: ChatMessage = {
-                  id: `user-${crypto.randomUUID()}`,
-                  role: "user",
-                  content: prompt,
-                };
-                setChatMessages((current) => [...current, userMessage]);
-                setChatInput("");
-                setIsThinking(true);
-                scrollChatToBottom();
-
-                void (async () => {
-                  if (!activeRunId) {
-                    const fallback: ChatMessage = {
-                      id: `assistant-${crypto.randomUUID()}`,
-                      role: "assistant",
-                      content: "Workflow is not running. Start a run first to get an agent follow-up report.",
-                    };
-                    setChatMessages((current) => [...current, fallback]);
-                    setIsThinking(false);
+            <div className="sticky bottom-0 z-10 -mx-3 mt-3 border-t border-zinc-800 bg-zinc-950/95 px-3 pb-3 pt-3 backdrop-blur">
+              <form
+                className="flex gap-2"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  const prompt = chatInput.trim();
+                  if (!prompt) {
                     return;
                   }
+                  if (!selectedNodeId) {
+                    return;
+                  }
+                  const nodeId = selectedNodeId;
 
-                  try {
-                    if (onBeforeSendChat) {
-                      await onBeforeSendChat();
-                    }
-                    const api = getApiClient();
-                    const payload = await api.replyNodeChat(activeRunId, nodeId, {
-                      content: prompt,
-                      rerunMode: pipeline.chatRerunMode,
-                    });
+                  const userMessage: ChatMessage = {
+                    id: `user-${crypto.randomUUID()}`,
+                    role: "user",
+                    content: prompt,
+                  };
+                  setChatMessages((current) => [...current, userMessage]);
+                  setChatInput("");
+                  setIsThinking(true);
+                  scrollChatToBottom();
 
-                    const assistantMessage: ChatMessage | null = payload.message.role === "user"
-                      ? {
-                          id: payload.message.id,
-                          role: "user",
-                          content: payload.message.content.trim(),
-                        }
-                      : payload.message.role === "system"
-                        ? null
-                        : (() => {
-                            const cleaned = sanitizeAssistantChatContent(payload.message.content);
-                            if (!cleaned) {
-                              return null;
-                            }
-                            return {
-                              id: payload.message.id,
-                              role: "assistant" as const,
-                              content: cleaned,
-                            };
-                          })();
-
-                    setChatMessages((current) => {
-                      if (!assistantMessage) {
-                        return current;
-                      }
-                      if (current.some((message) => message.id === assistantMessage.id)) {
-                        return current;
-                      }
-                      return [...current, assistantMessage];
-                    });
-
-                    if (payload.message.meta_json) {
-                      try {
-                        const meta = JSON.parse(payload.message.meta_json) as {
-                          startedRunId?: unknown;
-                          rerunDecision?: unknown;
-                          rerunMode?: unknown;
-                        };
-                        if (typeof meta.startedRunId === "string" && meta.startedRunId.trim()) {
-                          announceExternalRun(meta.startedRunId, `started-run:${payload.message.id}`);
-                        } else if (meta.rerunDecision === "rerun" && meta.rerunMode === "node") {
-                          announceExternalRun(activeRunId, `node-rerun:${payload.message.id}`);
-                        }
-                      } catch {
-                        // ignore malformed meta
-                      }
-                    }
-                  } catch (error) {
-                    const message = error instanceof Error
-                      ? error.message
-                      : "Failed to send chat message to agent.";
-                    setChatMessages((current) => [
-                      ...current,
-                      {
+                  void (async () => {
+                    if (!activeRunId) {
+                      const fallback: ChatMessage = {
                         id: `assistant-${crypto.randomUUID()}`,
                         role: "assistant",
-                        content: message,
-                      },
-                    ]);
-                  } finally {
-                    setIsThinking(false);
-                  }
-                })();
-              }}
-            >
-              <input
-                value={chatInput}
-                onChange={(event) => setChatInput(event.target.value)}
-                className="w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 outline-none ring-cyan-400/40 focus:ring"
-                placeholder="Ask for report, links, or summary..."
-              />
-              <Button type="submit">Send</Button>
-            </form>
+                        content: "Workflow is not running. Start a run first to get an agent follow-up report.",
+                      };
+                      setChatMessages((current) => [...current, fallback]);
+                      setIsThinking(false);
+                      return;
+                    }
+
+                    try {
+                      if (onBeforeSendChat) {
+                        await onBeforeSendChat();
+                      }
+                      const api = getApiClient();
+                      const payload = await api.replyNodeChat(activeRunId, nodeId, {
+                        content: prompt,
+                        rerunMode: pipeline.chatRerunMode,
+                      });
+
+                      const assistantMessage: ChatMessage | null = payload.message.role === "user"
+                        ? {
+                            id: payload.message.id,
+                            role: "user",
+                            content: payload.message.content.trim(),
+                          }
+                        : payload.message.role === "system"
+                          ? null
+                          : (() => {
+                              const cleaned = sanitizeAssistantChatContent(payload.message.content);
+                              if (!cleaned) {
+                                return null;
+                              }
+                              return {
+                                id: payload.message.id,
+                                role: "assistant" as const,
+                                content: cleaned,
+                              };
+                            })();
+
+                      setChatMessages((current) => {
+                        if (!assistantMessage) {
+                          return current;
+                        }
+                        if (current.some((message) => message.id === assistantMessage.id)) {
+                          return current;
+                        }
+                        return [...current, assistantMessage];
+                      });
+
+                      if (payload.message.meta_json) {
+                        try {
+                          const meta = JSON.parse(payload.message.meta_json) as {
+                            startedRunId?: unknown;
+                            rerunDecision?: unknown;
+                            rerunMode?: unknown;
+                          };
+                          if (typeof meta.startedRunId === "string" && meta.startedRunId.trim()) {
+                            announceExternalRun(meta.startedRunId, `started-run:${payload.message.id}`);
+                          } else if (meta.rerunDecision === "rerun" && meta.rerunMode === "node") {
+                            announceExternalRun(activeRunId, `node-rerun:${payload.message.id}`);
+                          }
+                        } catch {
+                          // ignore malformed meta
+                        }
+                      }
+                    } catch (error) {
+                      const message = error instanceof Error
+                        ? error.message
+                        : "Failed to send chat message to agent.";
+                      setChatMessages((current) => [
+                        ...current,
+                        {
+                          id: `assistant-${crypto.randomUUID()}`,
+                          role: "assistant",
+                          content: message,
+                        },
+                      ]);
+                    } finally {
+                      setIsThinking(false);
+                    }
+                  })();
+                }}
+              >
+                <input
+                  value={chatInput}
+                  onChange={(event) => setChatInput(event.target.value)}
+                  className="w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 outline-none ring-cyan-400/40 focus:ring"
+                  placeholder="Ask for report, links, or summary..."
+                />
+                <Button type="submit">Send</Button>
+              </form>
+            </div>
           </div>
         </aside>
       );
