@@ -105,6 +105,7 @@ type TriggerStatusResponse = {
 
 const MAX_TRIGGER_QUESTIONS = 5;
 const TRIGGER_INPUT_CHANNEL = "KOVALSKY_TRIGGER_INPUT_JSON";
+const TRIGGER_EVENT_DATA_CHANNEL = "KOVALSKY_TRIGGER_EVENT_DATA_JSON";
 const TRIGGER_INPUT_PREVIEW_MAX_CHARS = 8_000;
 const MAX_TRIGGER_PARSE_CHARS = 120_000;
 const MAX_TRIGGER_DEEP_PARSE_ATTEMPTS = 40;
@@ -452,7 +453,7 @@ function buildGenerationPrompt(goal: string, messages: TriggerChatMessage[]): st
     "For script_poll: no dependencies, use global fetch only, print exactly one JSON line.",
     "For agent_poll: define concise check instructions in agentPrompt and still return trigger JSON format.",
     "The JSON line must be either {\"triggered\":true,\"reason\":\"...\"} or {\"triggered\":false}.",
-    `Event payload delivery is built-in: downstream workflow agents receive ${TRIGGER_INPUT_CHANNEL} automatically.`,
+    `Event payload delivery is built-in: downstream workflow agents receive ${TRIGGER_INPUT_CHANNEL} and ${TRIGGER_EVENT_DATA_CHANNEL} automatically.`,
     "Never ask where to map payload fields inside workflow variables.",
     "If information is insufficient, ask up to 5 short clarifying questions.",
     "Output strict JSON only with one of these shapes:",
@@ -482,23 +483,8 @@ function buildAgentPollPrompt(goal: string, agentPrompt: string): string {
 }
 
 function extractReasonFromPollPayload(payload: Record<string, unknown>): string | undefined {
-  const reason = asString(payload.reason).trim();
-  if (reason) {
-    return reason;
-  }
-  const error = asString(payload.error).trim();
-  if (error) {
-    return `error=${error}`;
-  }
-  const message = asString(payload.message).trim();
-  if (message) {
-    return message;
-  }
-  const blocker = asString(payload.blocker).trim();
-  if (blocker) {
-    return `blocker=${blocker}`;
-  }
-  return undefined;
+  const reason = extractReasonFromUnknownPayload(payload);
+  return reason || undefined;
 }
 
 function inferNotTriggeredReasonFromText(raw: string): string | null {
@@ -556,14 +542,15 @@ function collectTriggeredExecutionNodeIds(graph: PipelineGraph, triggerNodeId: s
   return executionNodeIds;
 }
 
-function stringifyTriggerMeta(meta: Record<string, unknown>): string {
+function stringifyTriggerValue(value: unknown): string {
   try {
-    const compact = JSON.stringify(meta);
+    const normalized = value === undefined ? null : value;
+    const compact = JSON.stringify(normalized);
     if (!compact) {
       return "{}";
     }
     if (compact.length <= TRIGGER_INPUT_PREVIEW_MAX_CHARS) {
-      return JSON.stringify(meta, null, 2);
+      return JSON.stringify(normalized, null, 2);
     }
     const previewLength = Math.max(128, TRIGGER_INPUT_PREVIEW_MAX_CHARS - 256);
     return JSON.stringify(
@@ -580,14 +567,137 @@ function stringifyTriggerMeta(meta: Record<string, unknown>): string {
   }
 }
 
-function buildTriggerInputBlock(meta: Record<string, unknown>): string {
+const TRIGGER_EVENT_DATA_KEYS = [
+  "eventData",
+  "event_data",
+  "event",
+  "data",
+  "payload",
+  "input",
+  "body",
+  "result",
+  "details",
+  "message",
+  "content",
+  "text",
+];
+
+const TRIGGER_CONTROL_KEYS = new Set([
+  "triggered",
+  "reason",
+  "source",
+  "diagnostics",
+  "rawreport",
+  "status",
+  "error",
+  "message",
+]);
+
+type TriggerInputEnvelope = {
+  full: Record<string, unknown>;
+  eventData: unknown;
+  reason: string;
+};
+
+function normalizeEventDataFromTriggerPayload(value: unknown, depth = 0): unknown {
+  if (depth > 6 || value === null || value === undefined) {
+    return value;
+  }
+  if (!isObjectRecord(value)) {
+    return value;
+  }
+
+  for (const key of TRIGGER_EVENT_DATA_KEYS) {
+    if (!(key in value)) {
+      continue;
+    }
+    const candidate = value[key];
+    if (candidate === undefined || candidate === null) {
+      continue;
+    }
+    if (typeof candidate === "string" && !candidate.trim()) {
+      continue;
+    }
+    return normalizeEventDataFromTriggerPayload(candidate, depth + 1);
+  }
+
+  const businessEntries = Object.entries(value).filter(([key]) => !TRIGGER_CONTROL_KEYS.has(key.trim().toLowerCase()));
+  if (businessEntries.length > 0) {
+    return Object.fromEntries(businessEntries);
+  }
+  return value;
+}
+
+function extractReasonFromUnknownPayload(value: unknown, depth = 0): string {
+  if (depth > 6 || value === null || value === undefined) {
+    return "";
+  }
+  if (!isObjectRecord(value)) {
+    return "";
+  }
+
+  const reason = asString(value.reason).trim();
+  if (reason) {
+    return reason;
+  }
+
+  const error = asString(value.error).trim();
+  if (error) {
+    return `error=${error}`;
+  }
+
+  const message = asString(value.message).trim();
+  if (message) {
+    return message;
+  }
+
+  const blocker = asString(value.blocker).trim();
+  if (blocker) {
+    return `blocker=${blocker}`;
+  }
+
+  for (const key of TRIGGER_EVENT_DATA_KEYS) {
+    if (!(key in value)) {
+      continue;
+    }
+    const nested = extractReasonFromUnknownPayload(value[key], depth + 1);
+    if (nested) {
+      return nested;
+    }
+  }
+  return "";
+}
+
+function buildTriggerInputEnvelope(meta: Record<string, unknown>): TriggerInputEnvelope {
+  const source = asString(meta.source).trim() || "unknown";
+  const payload = Object.prototype.hasOwnProperty.call(meta, "payload") ? meta.payload : meta;
+  const eventData = normalizeEventDataFromTriggerPayload(payload);
+  const explicitReason = asString(meta.reason).trim();
+  const reason = explicitReason || extractReasonFromUnknownPayload(payload) || `source=${source}`;
+  return {
+    reason,
+    eventData,
+    full: {
+      ...meta,
+      source,
+      reason,
+      receivedAt: new Date().toISOString(),
+      payload,
+      eventData,
+    },
+  };
+}
+
+function buildTriggerInputBlock(envelope: TriggerInputEnvelope): string {
   return [
     "Trigger runtime input:",
-    `Channel: ${TRIGGER_INPUT_CHANNEL}`,
-    "This payload came from the event that started the current workflow run.",
+    `Channels: ${TRIGGER_INPUT_CHANNEL}, ${TRIGGER_EVENT_DATA_CHANNEL}`,
+    "This payload came from the event that started the current workflow run and may represent arbitrary event data.",
     `${TRIGGER_INPUT_CHANNEL}:`,
-    stringifyTriggerMeta(meta),
-    "Use this payload as authoritative trigger data for this run.",
+    stringifyTriggerValue(envelope.full),
+    `${TRIGGER_EVENT_DATA_CHANNEL}:`,
+    stringifyTriggerValue(envelope.eventData),
+    "Use KOVALSKY_TRIGGER_EVENT_DATA_JSON for business/event payload and KOVALSKY_TRIGGER_INPUT_JSON as full envelope.",
   ].join("\n");
 }
 
@@ -1182,6 +1292,7 @@ export class TriggerService {
 
     const result = await this.fireWatcherWorkflow(watcher, {
       source: "webhook",
+      reason: "Webhook request received.",
       payload: input.body,
     });
     return {
@@ -1382,6 +1493,7 @@ export class TriggerService {
 
       const fire = await this.fireWatcherWorkflow(watcher, {
         source: watcher.config.type,
+        reason: checkResult.reason ?? `Trigger matched (${watcher.config.type}).`,
         payload: checkResult.payload ?? {
           triggered: true,
           reason: checkResult.reason ?? `Trigger matched (${watcher.config.type}).`,
@@ -1561,32 +1673,35 @@ export class TriggerService {
     return null;
   }
 
-  private extractDecisionFromUnknown(value: unknown, depth = 0): PollCheckResult | null {
+  private extractDecisionFromUnknown(value: unknown, depth = 0, rootPayload: unknown = value): PollCheckResult | null {
     if (depth > 6 || value === null || value === undefined) {
       return null;
     }
 
     if (isObjectRecord(value)) {
       if (typeof value.triggered === "boolean") {
+        const payload = isObjectRecord(rootPayload)
+          ? rootPayload
+          : value;
         return {
           parsed: true,
           triggered: value.triggered,
-          reason: extractReasonFromPollPayload(value),
-          payload: value,
+          reason: extractReasonFromPollPayload(payload),
+          payload,
         };
       }
 
       const priorityKeys = ["payload", "result", "data", "message", "content", "text", "output"];
       for (const key of priorityKeys) {
         if (key in value) {
-          const nested = this.extractDecisionFromUnknown(value[key], depth + 1);
+          const nested = this.extractDecisionFromUnknown(value[key], depth + 1, rootPayload);
           if (nested) {
             return nested;
           }
         }
       }
       for (const nestedValue of Object.values(value)) {
-        const nested = this.extractDecisionFromUnknown(nestedValue, depth + 1);
+        const nested = this.extractDecisionFromUnknown(nestedValue, depth + 1, rootPayload);
         if (nested) {
           return nested;
         }
@@ -1596,7 +1711,7 @@ export class TriggerService {
 
     if (Array.isArray(value)) {
       for (const item of value) {
-        const nested = this.extractDecisionFromUnknown(item, depth + 1);
+        const nested = this.extractDecisionFromUnknown(item, depth + 1, rootPayload);
         if (nested) {
           return nested;
         }
@@ -1611,7 +1726,7 @@ export class TriggerService {
       }
       const parsed = extractJsonObject(trimmed);
       if (parsed) {
-        return this.extractDecisionFromUnknown(parsed, depth + 1);
+        return this.extractDecisionFromUnknown(parsed, depth + 1, rootPayload);
       }
       return null;
     }
@@ -1715,7 +1830,8 @@ export class TriggerService {
     if (downstreamNodeIds.size === 0) {
       return { runId: null, reason: "Trigger fired but no downstream nodes are connected." };
     }
-    const triggerInputBlock = buildTriggerInputBlock(meta);
+    const triggerInputEnvelope = buildTriggerInputEnvelope(meta);
+    const triggerInputBlock = buildTriggerInputBlock(triggerInputEnvelope);
     const graphWithTriggerInput: PipelineGraph = {
       ...graph,
       nodes: graph.nodes
@@ -1749,7 +1865,7 @@ export class TriggerService {
     watcher.lastRunId = started.runId;
     watcher.waitingForRunId = started.runId;
     watcher.lastError = null;
-    const triggerReason = this.extractTriggerReason(meta);
+    const triggerReason = triggerInputEnvelope.reason;
     const historyLines = [
       `Trigger fired: ${triggerReason}`,
       `Workflow run started: ${started.runId}`,
@@ -1776,10 +1892,10 @@ export class TriggerService {
       nodeId: watcher.nodeId,
       role: "system",
       phase: "pre_run",
-      content: `Trigger fired automatically.\nMeta: ${JSON.stringify(meta)}`,
+      content: `Trigger fired automatically.\nMeta: ${JSON.stringify(triggerInputEnvelope.full)}`,
       meta: {
         source: "trigger_service",
-        ...meta,
+        ...triggerInputEnvelope.full,
       },
     });
     for (const nodeId of nextStageNodeIds) {
@@ -2010,16 +2126,6 @@ export class TriggerService {
     };
     node.settings = settings;
     this.db.updatePipeline(pipeline.id, pipeline.name, JSON.stringify(graph));
-  }
-
-  private extractTriggerReason(meta: Record<string, unknown>): string {
-    const payload = isObjectRecord(meta.payload) ? meta.payload : null;
-    const reason = payload ? asString(payload.reason).trim() : "";
-    if (reason) {
-      return reason;
-    }
-    const source = asString(meta.source).trim();
-    return source ? `source=${source}` : "source=unknown";
   }
 
   private buildNotTriggeredDetails(payload: unknown, raw: string): string | null {
