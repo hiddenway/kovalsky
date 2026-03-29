@@ -390,17 +390,60 @@ function normalizeQuestionKey(input: string): string {
     .trim();
 }
 
+function looksLikeClarifyingPrompt(content: string): boolean {
+  const trimmed = content.trim();
+  if (!trimmed) {
+    return false;
+  }
+  const lowered = trimmed.toLowerCase();
+  if (lowered.includes("question limit reached")) {
+    return false;
+  }
+  if (trimmed.includes("?")) {
+    return true;
+  }
+  return /^(укажите|подтвердите|нужно|нужен|нужна|какой|какая|какие|provide|specify|confirm|what|which|do you|should|need)\b/i
+    .test(trimmed);
+}
+
+function collectAskedQuestionKeys(messages: TriggerChatMessage[]): Set<string> {
+  const asked = new Set<string>();
+  for (const message of messages) {
+    if (message.role !== "assistant") {
+      continue;
+    }
+    const content = message.content.trim();
+    if (!content) {
+      continue;
+    }
+    const extracted = extractQuestionCandidatesFromRaw(content);
+    if (extracted.length > 0) {
+      for (const question of extracted) {
+        const key = normalizeQuestionKey(question);
+        if (key) {
+          asked.add(key);
+        }
+      }
+      continue;
+    }
+    if (!looksLikeClarifyingPrompt(content)) {
+      continue;
+    }
+    const key = normalizeQuestionKey(content);
+    if (key) {
+      asked.add(key);
+    }
+  }
+  return asked;
+}
+
 function buildNeedsInputQuestions(
   messages: TriggerChatMessage[],
   candidateQuestions: string[],
   fallback: string,
 ): string[] {
-  const asked = messages
-    .filter((message) => message.role === "assistant")
-    .map((message) => normalizeQuestionKey(message.content))
-    .filter(Boolean);
-  const askedSet = new Set(asked);
-  const remaining = Math.max(0, MAX_TRIGGER_QUESTIONS - asked.length);
+  const askedSet = collectAskedQuestionKeys(messages);
+  const remaining = Math.max(0, MAX_TRIGGER_QUESTIONS - askedSet.size);
 
   if (remaining === 0) {
     return [
