@@ -983,7 +983,7 @@ export const openclawPlugin: AgentPlugin = {
       const command = typeof ctx.settings.command === "string" ? ctx.settings.command : "openclaw";
       ensureWorkspaceMemoryScaffold(ctx.workspacePath);
       const rootArgs: string[] = [];
-      const useIsolatedState = ctx.settings.useIsolatedState === true;
+      const useIsolatedState = ctx.settings.useIsolatedState !== false;
       const sharedStateDir = (ctx.env.OPENCLAW_STATE_DIR ?? "").trim();
       const statePrep = useIsolatedState
         ? prepareIsolatedStateDir(ctx)
@@ -1077,7 +1077,7 @@ export const openclawPlugin: AgentPlugin = {
         const sessionId = buildSessionId(ctx);
         const timeoutSeconds = typeof ctx.settings.timeoutSeconds === "number" && Number.isFinite(ctx.settings.timeoutSeconds)
           ? Math.max(1, Math.floor(ctx.settings.timeoutSeconds))
-          : 240;
+          : 600;
         commandArgs = [
           "agent",
           "--local",

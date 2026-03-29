@@ -83,7 +83,12 @@ function createOpenClawCompletionDetector(): (line: string) => boolean {
   };
 }
 
-function extractOpenClawFailureSignal(line: string): string | null {
+type OpenClawFailureSignal = {
+  kind: "browser" | "fatal";
+  message: string;
+};
+
+function extractOpenClawFailureSignal(line: string): OpenClawFailureSignal | null {
   const normalized = line.trim();
   if (!normalized) {
     return null;
@@ -97,15 +102,55 @@ function extractOpenClawFailureSignal(line: string): string | null {
   const timedOutPattern =
     /(?:embedded run timeout|profile .* timed out \(possible rate limit\)|request timed out before a response was generated)/i;
 
-  const failurePattern = new RegExp(
-    `${browserFailurePattern.source}|${fatalExecFailurePattern.source}|${fatalExecSummaryPattern.source}|${timedOutPattern.source}`,
-    "i",
-  );
-  if (!failurePattern.test(normalized)) {
-    return null;
+  const clipped = normalized.length > 320 ? `${normalized.slice(0, 317)}...` : normalized;
+  if (timedOutPattern.test(normalized) || fatalExecFailurePattern.test(normalized) || fatalExecSummaryPattern.test(normalized)) {
+    return {
+      kind: "fatal",
+      message: clipped,
+    };
+  }
+  if (browserFailurePattern.test(normalized)) {
+    return {
+      kind: "browser",
+      message: clipped,
+    };
+  }
+  return null;
+}
+
+function goalLikelyRequiresBrowser(goal: string): boolean {
+  const text = goal.trim();
+  if (!text) {
+    return false;
   }
 
-  return normalized.length > 320 ? `${normalized.slice(0, 317)}...` : normalized;
+  const explicitBrowserIntent =
+    /(?:\bbrowser\b|\bchrome\b|\bcdp\b|браузер|браузера|chrome relay|browser relay)/i;
+  if (explicitBrowserIntent.test(text)) {
+    return true;
+  }
+
+  const explicitOpenTarget =
+    /(?:^|\n)\s*(?:open|navigate|go to|visit|перейди|открой)\s+(?:https?:\/\/|www\.|[a-z0-9.-]+\.[a-z]{2,})/i;
+  return explicitOpenTarget.test(text);
+}
+
+function sanitizeArgsForLog(args: string[]): string[] {
+  const out: string[] = [];
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    if (arg === "--message") {
+      out.push("--message", "<omitted>");
+      index += 1;
+      continue;
+    }
+    if (arg.startsWith("--message=")) {
+      out.push("--message=<omitted>");
+      continue;
+    }
+    out.push(arg);
+  }
+  return out;
 }
 
 type SemverTriplet = [number, number, number];
@@ -377,6 +422,11 @@ export class AgentHost {
       this.eventBus.emit(event);
     };
 
+    writeLog(
+      "stderr",
+      `Invocation: ${invocation.command} ${sanitizeArgsForLog(invocation.args).join(" ")}`,
+    );
+
     this.logger.info(
       {
         stepRunId: params.context.stepRunId,
@@ -389,7 +439,7 @@ export class AgentHost {
     const openclawCompletion = params.agentId === "openclaw"
       ? createOpenClawCompletionDetector()
       : null;
-    let openclawFailureSignal: string | null = null;
+    let openclawFailureSignal: OpenClawFailureSignal | null = null;
 
     const runResult = await this.processManager.run({
       key: params.context.stepRunId,
@@ -423,12 +473,17 @@ export class AgentHost {
     });
 
     let effectiveExitCode = runResult.exitCode;
-    if (params.agentId === "openclaw" && effectiveExitCode === 0 && openclawFailureSignal) {
-      writeLog(
-        "stderr",
-        `OpenClaw reported browser/tool failure, marking step as failed: ${openclawFailureSignal}`,
-      );
-      effectiveExitCode = 1;
+    const capturedOpenclawFailureSignal = openclawFailureSignal as OpenClawFailureSignal | null;
+    if (params.agentId === "openclaw" && effectiveExitCode === 0 && capturedOpenclawFailureSignal) {
+      const shouldEnforceOpenClawFailure =
+        capturedOpenclawFailureSignal.kind === "fatal" || goalLikelyRequiresBrowser(params.context.goal);
+      if (shouldEnforceOpenClawFailure) {
+        writeLog(
+          "stderr",
+          `OpenClaw reported browser/tool failure, marking step as failed: ${capturedOpenclawFailureSignal.message}`,
+        );
+        effectiveExitCode = 1;
+      }
     }
 
     logStream.end();
