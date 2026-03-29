@@ -110,6 +110,12 @@ const TRIGGER_INPUT_PREVIEW_MAX_CHARS = 8_000;
 const MAX_TRIGGER_PARSE_CHARS = 120_000;
 const MAX_TRIGGER_DEEP_PARSE_ATTEMPTS = 40;
 const AGENT_POLL_MIN_DELAY_MS = 8_000;
+const QUIET_NOT_TRIGGERED_REASONS = new Set([
+  "no_new_private_text",
+  "no new private text message",
+  "no new private text messages",
+  "no new private text messages for telegram trigger",
+]);
 
 type PollCheckResult = {
   parsed: boolean;
@@ -782,6 +788,33 @@ function isTransientAgentPollError(message: string): boolean {
   return normalized.includes("timed out") || isTransientAgentPollReason(normalized);
 }
 
+function normalizeReasonToken(value: string): string {
+  return value
+    .toLowerCase()
+    .trim()
+    .replace(/[._-]+/g, " ")
+    .replace(/\s+/g, " ");
+}
+
+function isBenignNotTriggeredReason(reason: string): boolean {
+  const normalized = normalizeReasonToken(reason);
+  return QUIET_NOT_TRIGGERED_REASONS.has(normalized);
+}
+
+function shouldHideTriggerHistoryLine(content: string): boolean {
+  const trimmed = content.trim();
+  const match = trimmed.match(/^check:\s*not triggered\s*\(([^)]+)\)/i);
+  if (!match?.[1]) {
+    return false;
+  }
+  return isBenignNotTriggeredReason(match[1]);
+}
+
+function filterTriggerHistoryForDisplay(history: TriggerHistoryEntry[] | undefined): TriggerHistoryEntry[] {
+  const source = history ?? [];
+  return source.filter((entry) => !shouldHideTriggerHistoryLine(entry.content));
+}
+
 function looksLikeSuccessfulBrowserInspection(raw: string): boolean {
   const normalized = raw.trim().toLowerCase();
   if (!normalized) {
@@ -1263,7 +1296,7 @@ export class TriggerService {
       webhookPath: triggerState.generated?.type === "webhook" ? `/trigger-hooks/${triggerState.generated.token}` : null,
       scriptPath: triggerState.generated?.type === "script_poll" ? triggerState.generated.scriptPath ?? null : null,
       lastError: triggerState.lastError ?? null,
-      history: triggerState.history ?? [],
+      history: filterTriggerHistoryForDisplay(triggerState.history),
     };
   }
 
@@ -1310,7 +1343,7 @@ export class TriggerService {
       webhookPath: triggerState.generated?.type === "webhook" ? `/trigger-hooks/${triggerState.generated.token}` : null,
       scriptPath: triggerState.generated?.type === "script_poll" ? triggerState.generated.scriptPath ?? null : null,
       lastError: triggerState.lastError ?? null,
-      history: triggerState.history ?? [],
+      history: filterTriggerHistoryForDisplay(triggerState.history),
     };
   }
 
@@ -1513,6 +1546,7 @@ export class TriggerService {
       }
 
       if (!checkResult.triggered) {
+        const previousLastError = watcher.lastError;
         const notTriggeredReason = (checkResult.reason ?? "").trim()
           || "agent returned triggered=false without reason/diagnostics (агент не объяснил причину)";
         watcher.lastError = diagnostics ?? (isTransientAgentPollReason(notTriggeredReason) ? notTriggeredReason : null);
@@ -1527,12 +1561,19 @@ export class TriggerService {
         ) {
           suffixParts.push(`Error: ${watcher.lastError}`);
         }
-        this.pushWatcherHistory(
-          watcher,
-          suffixParts.length > 0
-            ? `Check: not triggered (${notTriggeredReason}). ${suffixParts.join(" ")}`
-            : `Check: not triggered (${notTriggeredReason}).`,
-        );
+        const shouldKeepQuiet = isBenignNotTriggeredReason(notTriggeredReason)
+          && suffixParts.length === 0
+          && !watcher.lastError;
+        if (!shouldKeepQuiet) {
+          this.pushWatcherHistory(
+            watcher,
+            suffixParts.length > 0
+              ? `Check: not triggered (${notTriggeredReason}). ${suffixParts.join(" ")}`
+              : `Check: not triggered (${notTriggeredReason}).`,
+          );
+        } else if (previousLastError === watcher.lastError) {
+          return;
+        }
         this.persistTriggerState(watcher.pipelineId, watcher.nodeId, {
           lastError: watcher.lastError,
           history: watcher.history,
@@ -2066,7 +2107,7 @@ export class TriggerService {
       lastFireAt: source.lastFireAt,
       lastRunId: source.lastRunId,
       lastError: source.lastError,
-      history: source.history,
+      history: filterTriggerHistoryForDisplay(source.history),
     };
   }
 
