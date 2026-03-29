@@ -47,30 +47,43 @@ function normalizeWorkspaceInput(rawPath: string | undefined): string {
   return input.trim();
 }
 
-export function resolveWorkspacePath(rawPath: string | undefined): string | null {
+function collectWorkspaceCandidates(rawPath: string | undefined): string[] {
   const input = normalizeWorkspaceInput(rawPath);
   if (!input) {
-    return null;
+    return [];
   }
-
-  const candidates = new Set<string>();
-  candidates.add(path.resolve(input));
+  const candidates: string[] = [];
+  const seen = new Set<string>();
+  const push = (candidate: string): void => {
+    const normalized = path.resolve(candidate);
+    if (!seen.has(normalized)) {
+      seen.add(normalized);
+      candidates.push(normalized);
+    }
+  };
 
   if (input.startsWith("~/") || input === "~") {
     const suffix = input === "~" ? "" : input.slice(2);
-    candidates.add(path.join(os.homedir(), suffix));
+    push(path.join(os.homedir(), suffix));
+    push(path.resolve(input));
+    return candidates;
   }
 
-  if (!path.isAbsolute(input)) {
-    candidates.add(path.resolve(process.cwd(), input));
-    candidates.add(path.join(os.homedir(), input));
+  if (path.isAbsolute(input)) {
+    push(input);
+    push(path.join(os.homedir(), input.replace(/^\/+/, "")));
   } else {
-    candidates.add(path.join(os.homedir(), input.replace(/^\/+/, "")));
+    push(path.resolve(process.cwd(), input));
+    push(path.join(os.homedir(), input));
   }
+  return candidates;
+}
 
+export function resolveWorkspacePath(rawPath: string | undefined): string | null {
+  const candidates = collectWorkspaceCandidates(rawPath);
   for (const candidate of candidates) {
     try {
-      if (fs.existsSync(candidate)) {
+      if (fs.existsSync(candidate) && fs.statSync(candidate).isDirectory()) {
         return candidate;
       }
     } catch {
@@ -78,5 +91,24 @@ export function resolveWorkspacePath(rawPath: string | undefined): string | null
     }
   }
 
+  return null;
+}
+
+export function resolveOrCreateWorkspacePath(rawPath: string | undefined): string | null {
+  const existing = resolveWorkspacePath(rawPath);
+  if (existing) {
+    return existing;
+  }
+  const candidates = collectWorkspaceCandidates(rawPath);
+  for (const candidate of candidates) {
+    try {
+      fs.mkdirSync(candidate, { recursive: true });
+      if (fs.existsSync(candidate) && fs.statSync(candidate).isDirectory()) {
+        return candidate;
+      }
+    } catch {
+      continue;
+    }
+  }
   return null;
 }

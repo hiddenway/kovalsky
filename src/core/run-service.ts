@@ -27,7 +27,7 @@ import { normalizeUrlCandidate } from "../utils/url";
 import { readCodexAuthState } from "../utils/codex-auth";
 import { SettingsService } from "./settings-service";
 import type { OpenClawProviderMode } from "./settings-service";
-import { resolveWorkspacePath } from "../utils/workspace-path";
+import { resolveOrCreateWorkspacePath } from "../utils/workspace-path";
 import type { LoopContinuationRequest } from "./graph-executor";
 
 interface ActiveRunControl {
@@ -363,7 +363,7 @@ export class RunService {
   }
 
   private resolveWorkspacePath(rawPath: string): string | null {
-    return resolveWorkspacePath(rawPath);
+    return resolveOrCreateWorkspacePath(rawPath);
   }
 
   async cancelRun(runId: string): Promise<boolean> {
