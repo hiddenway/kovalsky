@@ -210,6 +210,12 @@ function areChatMessagesEqual(left: ChatMessage[], right: ChatMessage[]): boolea
   return true;
 }
 
+function viewToggleClass(active: boolean): string {
+  return active
+    ? "border-cyan-400/70 bg-cyan-500/20 text-cyan-100"
+    : "border-zinc-700 bg-zinc-900 text-zinc-300 hover:bg-zinc-800";
+}
+
 export function InspectorPanel({
   pipelineId,
   selectedNode,
@@ -258,7 +264,7 @@ export function InspectorPanel({
   };
 
   useEffect(() => {
-    if (!showHandoff || !selectedNode) {
+    if (!showHandoff || !selectedNode || isTriggerAgent(selectedNode.data.agentId)) {
       return;
     }
 
@@ -273,7 +279,7 @@ export function InspectorPanel({
   }, [selectedNodeId, showHandoff, selectedNode]);
 
   useEffect(() => {
-    if (!showHandoff || !selectedNodeId || !activeRunId) {
+    if (!showHandoff || !selectedNodeId || !activeRunId || !selectedNode || isTriggerAgent(selectedNode.data.agentId)) {
       return;
     }
 
@@ -416,13 +422,211 @@ export function InspectorPanel({
     const definition = getAgentById(selectedNode.data.agentId);
     const settingFields = getAgentSettingFields(selectedNode.data.agentId);
     const settings = selectedNode.data.settings ?? {};
+    const isTriggerNode = isTriggerAgent(selectedNode.data.agentId);
     const chatContextModeRaw = typeof settings.chatContextMode === "string" ? settings.chatContextMode.trim().toLowerCase() : "";
     const chatContextMode = chatContextModeRaw === "off" || chatContextModeRaw === "strict" ? chatContextModeRaw : "light";
 
+    const renderNodeModeSwitch = (mode: "inspector" | "chat"): React.JSX.Element => (
+      <div className="flex gap-2">
+        <button
+          type="button"
+          className={`rounded-md border px-2.5 py-1 text-[11px] font-medium transition ${viewToggleClass(mode === "inspector")}`}
+          onClick={onCloseHandoff}
+        >
+          Inspector
+        </button>
+        <button
+          type="button"
+          className={`rounded-md border px-2.5 py-1 text-[11px] font-medium transition ${viewToggleClass(mode === "chat")}`}
+          onClick={() => selectedNode.data.onOpenHandoff?.()}
+        >
+          Chat with Agent
+        </button>
+      </div>
+    );
+
     if (showHandoff) {
+      const triggerState = readTriggerState(settings);
+      const triggerChat = Array.isArray(triggerState.chat) ? triggerState.chat : [];
+      const triggerHistory = triggerRuntimeStatus?.history ?? triggerState.history ?? [];
+      const triggerConversation = [
+        ...triggerChat.map((message, index) => ({
+          id: `chat-${index}`,
+          role: message.role,
+          content: message.content,
+          meta: null as string | null,
+        })),
+        ...triggerHistory.map((entry) => ({
+          id: entry.id,
+          role: "assistant" as const,
+          content: entry.content,
+          meta: entry.at,
+        })),
+      ];
+      const updateTriggerState = (nextTriggerState: TriggerState): Record<string, unknown> => {
+        const nextSettings = {
+          ...settings,
+          trigger: nextTriggerState,
+        };
+        onSettingsChange(nextSettings);
+        return nextSettings;
+      };
+      const appendTriggerAssistantMessages = (
+        currentTriggerState: TriggerState,
+        response: TriggerGenerationResponse,
+        nextChat: TriggerChatMessage[],
+      ): TriggerState => {
+        if (response.status === "needs_input") {
+          return {
+            ...currentTriggerState,
+            lifecycleStatus: "draft",
+            chat: [
+              ...nextChat,
+              ...response.questions.map((question) => ({ role: "assistant" as const, content: question })),
+            ],
+            raw: response.raw,
+            workspacePath: pipeline.workspacePath,
+          };
+        }
+
+        const lines = [
+          response.summary,
+          response.webhookPath ? `Webhook path: ${response.webhookPath}` : "",
+          response.scriptPath ? `Script path: ${response.scriptPath}` : "",
+        ].filter(Boolean);
+
+        return {
+          ...currentTriggerState,
+          lifecycleStatus: "paused",
+          summary: response.summary,
+          generated: response.config as Record<string, unknown>,
+          webhookPath: response.webhookPath,
+          scriptPath: response.scriptPath,
+          raw: response.raw,
+          workspacePath: pipeline.workspacePath,
+          chat: [...nextChat, { role: "assistant", content: lines.join("\n") }],
+        };
+      };
+      const sendTriggerChatMessage = async (): Promise<void> => {
+        if (!isTriggerNode) {
+          return;
+        }
+        if (!pipeline.workspacePath.trim()) {
+          updateTriggerState({
+            ...triggerState,
+            lastError: "Set Workflow Workspace Path before generating a trigger.",
+          });
+          return;
+        }
+
+        const trimmedInput = triggerInput.trim();
+        const nextChat = trimmedInput
+          ? [...triggerChat, { role: "user" as const, content: trimmedInput }]
+          : triggerChat;
+        const currentTriggerState = {
+          ...triggerState,
+          chat: nextChat,
+          workspacePath: pipeline.workspacePath,
+        } satisfies TriggerState;
+        updateTriggerState(currentTriggerState);
+        setTriggerInput("");
+        setIsTriggerBusy(true);
+        scrollChatToBottom();
+
+        try {
+          const api = getApiClient();
+          const response = await api.generateTrigger({
+            nodeId: selectedNode.id,
+            goal: selectedNode.data.goal,
+            workspacePath: pipeline.workspacePath,
+            settings,
+            messages: nextChat,
+          });
+          const nextState = appendTriggerAssistantMessages(currentTriggerState, response, nextChat);
+          updateTriggerState(nextState);
+          setTriggerRuntimeStatus((current) => current ? { ...current, status: nextState.lifecycleStatus ?? "draft" } : null);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "Failed to generate trigger.";
+          updateTriggerState({
+            ...currentTriggerState,
+            chat: [...nextChat, { role: "assistant", content: message }],
+            lastError: message,
+          });
+        } finally {
+          setIsTriggerBusy(false);
+        }
+      };
+
+      if (isTriggerNode) {
+        return (
+          <aside className="h-full overflow-y-auto border-l border-zinc-800 bg-zinc-950/70 p-3">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h2 className="text-sm font-semibold text-zinc-100">Trigger Chat</h2>
+                <p className="mt-1 text-xs text-zinc-400">
+                  {definition?.icon ? `${definition.icon} ` : ""}
+                  {definition?.title ?? selectedNode.data.agentId}
+                </p>
+              </div>
+              {renderNodeModeSwitch("chat")}
+            </div>
+
+            <div className="mt-3 flex h-[calc(100%-44px)] min-h-[360px] flex-col">
+              <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
+                {triggerConversation.length > 0 ? triggerConversation.map((message) => (
+                  <div
+                    key={message.id}
+                    className={
+                      message.role === "assistant"
+                        ? "rounded-md border border-cyan-500/30 bg-cyan-500/10 p-3 text-sm text-cyan-50"
+                        : "rounded-md border border-zinc-700 bg-zinc-900 p-3 text-sm text-zinc-100"
+                    }
+                  >
+                    <p className="mb-1 text-[10px] uppercase tracking-wide text-zinc-400">
+                      {message.role === "assistant" ? "Trigger" : "You"}
+                    </p>
+                    {message.meta ? <p className="mb-1 text-[10px] text-zinc-500">{message.meta}</p> : null}
+                    <pre className="whitespace-pre-wrap break-words font-sans">{message.content}</pre>
+                  </div>
+                )) : (
+                  <div className="rounded-md border border-zinc-800 bg-zinc-900/70 p-3 text-sm text-zinc-400">
+                    Generation questions, trigger events, and launch logs will appear here.
+                  </div>
+                )}
+                {isTriggerBusy ? (
+                  <div className="rounded-md border border-cyan-500/40 bg-cyan-500/10 p-3 text-sm text-cyan-50">
+                    <p className="mb-1 text-[10px] uppercase tracking-wide text-zinc-400">Trigger</p>
+                    <p className="animate-pulse">Thinking...</p>
+                  </div>
+                ) : null}
+                <div ref={chatBottomRef} />
+              </div>
+
+              <form
+                className="mt-3 flex gap-2"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void sendTriggerChatMessage();
+                }}
+              >
+                <input
+                  value={triggerInput}
+                  onChange={(event) => setTriggerInput(event.target.value)}
+                  className="w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 outline-none ring-cyan-400/40 focus:ring"
+                  placeholder="Add clarification or answer a trigger question..."
+                />
+                <Button type="submit" disabled={isTriggerBusy || !pipeline.workspacePath.trim()}>
+                  Send
+                </Button>
+              </form>
+            </div>
+          </aside>
+        );
+      }
+
       return (
         <aside className="h-full overflow-y-auto border-l border-zinc-800 bg-zinc-950/70 p-3">
-          <div className="flex items-start justify-between gap-2">
+          <div className="flex items-start justify-between gap-3">
             <div>
               <h2 className="text-sm font-semibold text-zinc-100">Agent Chat</h2>
               <p className="mt-1 text-xs text-zinc-400">
@@ -430,13 +634,7 @@ export function InspectorPanel({
                 {definition?.title ?? selectedNode.data.agentId}
               </p>
             </div>
-            <button
-              type="button"
-              className="rounded border border-zinc-700 px-2 py-1 text-xs text-zinc-300 transition hover:bg-zinc-800"
-              onClick={onCloseHandoff}
-            >
-              Back
-            </button>
+            {renderNodeModeSwitch("chat")}
           </div>
 
           <div className="mt-3 flex h-[calc(100%-44px)] min-h-[360px] flex-col">
@@ -622,24 +820,8 @@ export function InspectorPanel({
     };
 
     const triggerState = readTriggerState(settings);
-    const triggerChat = Array.isArray(triggerState.chat) ? triggerState.chat : [];
     const effectiveTriggerStatus = triggerRuntimeStatus?.status ?? triggerState.lifecycleStatus ?? "draft";
     const triggerIsRunning = effectiveTriggerStatus === "active" || effectiveTriggerStatus === "working";
-    const triggerHistory = triggerRuntimeStatus?.history ?? triggerState.history ?? [];
-    const triggerConversation = [
-      ...triggerChat.map((message, index) => ({
-        id: `chat-${index}`,
-        role: message.role,
-        content: message.content,
-        meta: null as string | null,
-      })),
-      ...triggerHistory.map((entry) => ({
-        id: entry.id,
-        role: "assistant" as const,
-        content: entry.content,
-        meta: entry.at,
-      })),
-    ];
 
     const updateTriggerState = (nextTriggerState: TriggerState): Record<string, unknown> => {
       const nextSettings = {
@@ -705,17 +887,18 @@ export function InspectorPanel({
 
     return (
       <aside className="h-full overflow-y-auto border-l border-zinc-800 bg-zinc-950/70 p-3">
-        <h2 className="text-sm font-semibold text-zinc-100">Node Inspector</h2>
-
-        <div className="mt-3 space-y-3">
+        <div className="flex items-start justify-between gap-3">
           <div>
-            <p className="text-xs text-zinc-400">Agent</p>
-            <p className="text-sm text-zinc-200">
+            <h2 className="text-sm font-semibold text-zinc-100">Node Inspector</h2>
+            <p className="mt-1 text-xs text-zinc-400">
               {definition?.icon ? `${definition.icon} ` : ""}
               {definition?.title ?? selectedNode.data.agentId}
             </p>
           </div>
+          {renderNodeModeSwitch("inspector")}
+        </div>
 
+        <div className="mt-3 space-y-3">
           <div>
             <p className="mb-1 text-xs text-zinc-400">Node Name</p>
             <input
@@ -726,7 +909,7 @@ export function InspectorPanel({
             />
           </div>
 
-          {!isTriggerAgent(selectedNode.data.agentId) ? (
+          {!isTriggerNode ? (
             <div>
               <p className="mb-1 text-xs text-zinc-400">Agent Uses Chat Context</p>
               <select
@@ -752,12 +935,12 @@ export function InspectorPanel({
                 value={selectedNode.data.goal}
                 onChange={(event) => onGoalChange(event.target.value)}
                 className="min-h-28 w-full resize-y rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 outline-none ring-cyan-400/40 focus:ring"
-                placeholder={isTriggerAgent(selectedNode.data.agentId) ? "Describe the event that should launch this workflow" : "Describe what this agent must do"}
+                placeholder={isTriggerNode ? "Describe the event that should launch this workflow" : "Describe what this agent must do"}
               />
             </div>
           ) : null}
 
-          {isTriggerAgent(selectedNode.data.agentId) ? (
+          {isTriggerNode ? (
             <div className="space-y-3 rounded-md border border-zinc-800 bg-zinc-900/70 p-3">
               <div className="flex items-center justify-between gap-3">
                 <div>
@@ -775,17 +958,13 @@ export function InspectorPanel({
                         });
                         return;
                       }
-                      const trimmedInput = triggerInput.trim();
-                      const nextChat = trimmedInput
-                        ? [...triggerChat, { role: "user" as const, content: trimmedInput }]
-                        : triggerChat;
+                      const nextChat = Array.isArray(triggerState.chat) ? triggerState.chat : [];
                       const currentTriggerState = {
                         ...triggerState,
                         chat: nextChat,
                         workspacePath: pipeline.workspacePath,
                       } satisfies TriggerState;
                       updateTriggerState(currentTriggerState);
-                      setTriggerInput("");
                       setIsTriggerBusy(true);
 
                       void (async () => {
@@ -923,38 +1102,6 @@ export function InspectorPanel({
                   {triggerState.lastError}
                 </div>
               ) : null}
-
-              <div className="space-y-2">
-                <p className="text-xs text-zinc-400">Trigger Chat</p>
-                <div className="max-h-64 space-y-2 overflow-y-auto rounded-md border border-zinc-800 bg-zinc-950/70 p-2">
-                  {triggerConversation.length > 0 ? triggerConversation.map((message) => (
-                    <div
-                      key={message.id}
-                      className={
-                        message.role === "assistant"
-                          ? "rounded-md border border-cyan-500/30 bg-cyan-500/10 p-2 text-xs text-cyan-50"
-                          : "rounded-md border border-zinc-700 bg-zinc-900 p-2 text-xs text-zinc-100"
-                      }
-                    >
-                      <p className="mb-1 text-[10px] uppercase tracking-wide text-zinc-400">
-                        {message.role === "assistant" ? "Trigger" : "You"}
-                      </p>
-                      {message.meta ? <p className="mb-1 text-[10px] text-zinc-500">{message.meta}</p> : null}
-                      <p className="whitespace-pre-wrap break-words">{message.content}</p>
-                    </div>
-                  )) : (
-                    <p className="text-xs text-zinc-500">Generation questions, trigger events, and launch logs will appear here.</p>
-                  )}
-                </div>
-                <div className="flex gap-2">
-                  <input
-                    value={triggerInput}
-                    onChange={(event) => setTriggerInput(event.target.value)}
-                    className="w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 outline-none ring-cyan-400/40 focus:ring"
-                    placeholder="Add clarification or answer a trigger question..."
-                  />
-                </div>
-              </div>
 
               {triggerLastRunSnapshot?.run ? (
                 <div className="space-y-2 rounded-md border border-zinc-800 bg-zinc-950/70 p-3">
