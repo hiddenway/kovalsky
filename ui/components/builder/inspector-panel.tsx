@@ -822,6 +822,13 @@ export function InspectorPanel({
     const triggerState = readTriggerState(settings);
     const effectiveTriggerStatus = triggerRuntimeStatus?.status ?? triggerState.lifecycleStatus ?? "draft";
     const triggerIsRunning = effectiveTriggerStatus === "active" || effectiveTriggerStatus === "working";
+    const triggerGenerated = isObjectRecord(triggerState.generated) ? triggerState.generated : null;
+    const triggerGeneratedType = typeof triggerGenerated?.type === "string" ? triggerGenerated.type : "";
+    const triggerIntervalMin = triggerGeneratedType === "script_poll" ? 3 : 15;
+    const triggerIntervalSeconds =
+      triggerGenerated && typeof triggerGenerated.intervalSeconds === "number" && Number.isFinite(triggerGenerated.intervalSeconds)
+        ? triggerGenerated.intervalSeconds
+        : null;
 
     const updateTriggerState = (nextTriggerState: TriggerState): Record<string, unknown> => {
       const nextSettings = {
@@ -1078,8 +1085,29 @@ export function InspectorPanel({
                   <p>{triggerState.summary}</p>
                   {triggerState.webhookPath ? <p className="mt-2 break-all text-zinc-400">Webhook: {triggerState.webhookPath}</p> : null}
                   {triggerState.scriptPath ? <p className="mt-1 break-all text-zinc-400">Script: {triggerState.scriptPath}</p> : null}
-                  {isObjectRecord(triggerState.generated) && typeof triggerState.generated.intervalSeconds === "number" ? (
-                    <p className="mt-1 text-zinc-400">Polling interval: {triggerState.generated.intervalSeconds} sec</p>
+                  {triggerIntervalSeconds !== null ? (
+                    <div className="mt-2 rounded-md border border-zinc-800 bg-zinc-900/70 p-2">
+                      <p className="text-[11px] text-zinc-400">Polling interval (sec)</p>
+                      <input
+                        type="number"
+                        min={triggerIntervalMin}
+                        step={1}
+                        value={triggerIntervalSeconds}
+                        onChange={(event) => {
+                          const parsed = Math.floor(Number(event.target.value));
+                          const nextInterval = Number.isFinite(parsed) ? Math.max(triggerIntervalMin, parsed) : triggerIntervalMin;
+                          updateTriggerState({
+                            ...triggerState,
+                            generated: {
+                              ...(triggerGenerated ?? {}),
+                              intervalSeconds: nextInterval,
+                            },
+                          });
+                        }}
+                        className="mt-1 w-full rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-sm text-zinc-100 outline-none ring-cyan-400/40 focus:ring"
+                      />
+                      <p className="mt-1 text-[10px] text-zinc-500">Apply by pausing and activating trigger again.</p>
+                    </div>
                   ) : null}
                 </div>
               ) : null}

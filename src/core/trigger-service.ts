@@ -932,7 +932,7 @@ export class TriggerService {
       };
     }
 
-    const intervalSeconds = Math.max(15, Math.floor(asNumber(configRaw.intervalSeconds) ?? 60));
+    const intervalSeconds = Math.max(3, Math.floor(asNumber(configRaw.intervalSeconds) ?? 60));
     const timeoutSeconds = Math.max(5, Math.floor(asNumber(configRaw.timeoutSeconds) ?? 30));
     const coolDownSeconds = Math.max(5, Math.floor(asNumber(configRaw.coolDownSeconds) ?? 60));
     const scriptFileName = sanitizeFileName(asString(configRaw.scriptFileName), `${input.nodeId}-trigger`);
@@ -1836,7 +1836,7 @@ export class TriggerService {
       }
       return {
         type: "script_poll",
-        intervalSeconds: Math.max(15, Math.floor(asNumber(value.intervalSeconds) ?? 60)),
+        intervalSeconds: Math.max(3, Math.floor(asNumber(value.intervalSeconds) ?? 60)),
         timeoutSeconds: Math.max(5, Math.floor(asNumber(value.timeoutSeconds) ?? 30)),
         coolDownSeconds: Math.max(5, Math.floor(asNumber(value.coolDownSeconds) ?? 60)),
         scriptFileName: sanitizeFileName(asString(value.scriptFileName), "trigger"),

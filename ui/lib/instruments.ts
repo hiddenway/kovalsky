@@ -191,7 +191,7 @@ export function createInstrumentPreset(instrumentId: string): InstrumentPreset |
             "Telegram bot poll trigger. Reads Telegram getUpdates and fires workflow on new private text message. Set KOVALSKY_TELEGRAM_BOT_TOKEN env var.",
           generated: {
             type: "script_poll",
-            intervalSeconds: 20,
+            intervalSeconds: 3,
             timeoutSeconds: 20,
             coolDownSeconds: 5,
             scriptFileName: "telegram-trigger.mjs",
