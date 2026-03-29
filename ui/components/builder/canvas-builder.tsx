@@ -373,13 +373,32 @@ function CanvasBuilderInner(): React.JSX.Element {
     () => edges.find((edge) => edge.id === selectedEdgeId) ?? null,
     [edges, selectedEdgeId],
   );
+  const activeEdgeIds = useMemo(() => {
+    if (!latestRun || latestRun.run.status !== "running") {
+      return new Set<string>();
+    }
+
+    const runningStepIds = new Set(
+      latestRun.steps
+        .filter((step) => step.status === "running")
+        .map((step) => step.stepId),
+    );
+
+    return new Set(
+      edges
+        .filter((edge) => runningStepIds.has(edge.source) || runningStepIds.has(edge.target))
+        .map((edge) => edge.id),
+    );
+  }, [edges, latestRun]);
   const displayEdges = useMemo(
     () =>
       edges.map((edge) => {
         const isSelected = Boolean(edge.selected) || edge.id === selectedEdgeId;
-        const stroke = isSelected ? "#22d3ee" : "#71717a";
+        const isActive = activeEdgeIds.has(edge.id);
+        const stroke = isSelected ? "#67e8f9" : isActive ? "#22d3ee" : "#71717a";
         return {
           ...edge,
+          className: [edge.className, isActive ? "edge-working" : null].filter(Boolean).join(" ") || undefined,
           markerEnd: {
             type: MarkerType.ArrowClosed,
             width: 20,
@@ -389,11 +408,11 @@ function CanvasBuilderInner(): React.JSX.Element {
           style: {
             ...(edge.style ?? {}),
             stroke,
-            strokeWidth: isSelected ? 4 : 3,
+            strokeWidth: isSelected ? 4.5 : isActive ? 4 : 3,
           },
         };
       }),
-    [edges, selectedEdgeId],
+    [activeEdgeIds, edges, selectedEdgeId],
   );
 
   const edgeArtifactTypes = useMemo(() => {
