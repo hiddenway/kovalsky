@@ -1226,11 +1226,29 @@ export class GraphExecutor {
       return baseGoal;
     }
 
+    const missingOutputMatches = previousError
+      ? [...previousError.matchAll(/(\.{1,2}\/[^\s,;]+?\.[A-Za-z0-9]{1,10})/g)]
+          .map((match) => match[1].trim())
+          .filter(Boolean)
+      : [];
+    const missingOutputFiles = [...new Set(missingOutputMatches)];
+
+    const missingOutputBlock = missingOutputFiles.length > 0
+      ? [
+          "Output recovery requirement:",
+          `- Missing required output files from previous attempt: ${missingOutputFiles.join(", ")}`,
+          "- You must perform real filesystem writes in this workspace for the missing outputs.",
+          "- Before final response, verify each required output with concrete file checks (for example: test -f <path> and ls -l <path>).",
+          "- Do not claim a file exists unless verified in this attempt.",
+        ].join("\n")
+      : "";
+
     const retryContext = [
       "",
       `Retry attempt ${attempt}/${maxAttempts}.`,
       "Self-heal instruction: analyze previous failure and apply a corrected approach.",
       previousError ? `Previous error: ${previousError}` : "Previous error: unknown",
+      missingOutputBlock,
       "Do not repeat the same failing command unchanged.",
     ].join("\n");
 

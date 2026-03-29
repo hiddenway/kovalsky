@@ -363,6 +363,36 @@ function isLikelyActionRequestText(input: string): boolean {
     .test(normalized);
 }
 
+function extractExpectedOutputFiles(input: string): string[] {
+  const out = new Set<string>();
+  const lines = input.split(/\r?\n/);
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (!line) {
+      continue;
+    }
+
+    const lowered = line.toLowerCase();
+    if (!/(save|write|export|create|output)/.test(lowered)) {
+      continue;
+    }
+
+    const matches = line.match(/(?:\.{1,2}\/)[^\s`"'<>|]+/g) ?? [];
+    for (const match of matches) {
+      const normalized = match.replace(/[),.;:!?]+$/g, "").trim();
+      if (!normalized) {
+        continue;
+      }
+      if (!/\.[A-Za-z0-9]{1,10}$/.test(normalized)) {
+        continue;
+      }
+      out.add(normalized);
+    }
+  }
+
+  return [...out];
+}
+
 function buildAgentMessage(ctx: StepExecutionContext): string {
   const lines: string[] = [];
   const persistBackgroundProcesses = ctx.settings.persistBackgroundProcesses === true;
@@ -374,6 +404,7 @@ function buildAgentMessage(ctx: StepExecutionContext): string {
     ctx.plannedNode.goalAddendum ?? "",
     ctx.plannedNode.handoffContext ?? "",
   ].join("\n");
+  const expectedOutputFiles = extractExpectedOutputFiles(combinedTaskText);
   if (ctx.goal.trim()) {
     lines.push(ctx.goal.trim());
   }
@@ -389,6 +420,12 @@ function buildAgentMessage(ctx: StepExecutionContext): string {
   lines.push("Ask a clarifying question only when a truly blocking input is missing and no safe assumption exists.");
   lines.push("If not blocked, make a reasonable assumption, execute, and report what assumption was used.");
   lines.push("Do not request persona/onboarding info or repeated confirmations during execution.");
+  if (expectedOutputFiles.length > 0) {
+    lines.push(`Output contract for this step (must exist in current workspace before you finish): ${expectedOutputFiles.join(", ")}`);
+    lines.push("Do not claim output is saved without verifying file existence in this exact step.");
+    lines.push("Before final response, verify each output with a file check command (for example: test -f <path> and ls -l <path>).");
+    lines.push("If any output file is missing, create/write it first, then verify again.");
+  }
   if (useWorkspaceRelativeProjectPath) {
     lines.push("Path policy: never create or use root-level /project or /projects.");
     lines.push("When task text references /project or /projects, interpret it as ./project inside current workspace.");

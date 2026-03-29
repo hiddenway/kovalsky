@@ -1443,7 +1443,7 @@ export class RunService {
   }
 
   private buildPipelineChatContextSnippet(messages: NodeMessageRecord[], mode: NodeChatContextMode): string {
-    const sourceHistory = this.buildAssistantChatHistory(messages);
+    const sourceHistory = this.buildUserChatHistory(messages);
     const history = mode === "strict" ? sourceHistory.slice(-16) : sourceHistory.slice(-8);
     if (history.length === 0) {
       return "";
@@ -1455,6 +1455,21 @@ export class RunService {
         return `${index + 1}. ${role}: ${this.truncateForGoal(item.content, mode === "strict" ? 420 : 240)}`;
       })
       .join("\n");
+  }
+
+  private buildUserChatHistory(messages: NodeMessageRecord[]): Array<{
+    role: NodeMessageRole;
+    content: string;
+    createdAt: string;
+  }> {
+    return messages
+      .filter((message) => message.role === "user")
+      .map((message) => ({
+        role: message.role,
+        content: message.content,
+        createdAt: message.created_at,
+      }))
+      .filter((message) => message.content.trim().length > 0);
   }
 
   private buildNodeGoalWithChatContext(
