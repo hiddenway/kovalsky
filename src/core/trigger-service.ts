@@ -1451,15 +1451,18 @@ export class TriggerService {
       if (watcher.config.type === "script_poll") {
         const stdoutLines: string[] = [];
         const stderrLines: string[] = [];
-        const scriptPath = watcher.config.scriptPath
-          ?? this.writeScriptFile(
-            watcher.workspacePath,
-            watcher.nodeId,
-            watcher.config.scriptFileName,
-            watcher.config.scriptContent,
-          );
-
-        watcher.config.scriptPath = scriptPath;
+        const scriptPath = this.writeScriptFile(
+          watcher.workspacePath,
+          watcher.nodeId,
+          watcher.config.scriptFileName,
+          watcher.config.scriptContent,
+        );
+        if (watcher.config.scriptPath !== scriptPath) {
+          watcher.config.scriptPath = scriptPath;
+          this.persistTriggerState(watcher.pipelineId, watcher.nodeId, {
+            generated: watcher.config,
+          });
+        }
 
         await this.processManager.run({
           key: `trigger:${key}`,
