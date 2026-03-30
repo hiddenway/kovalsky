@@ -173,6 +173,26 @@ function sanitizeFileName(input: string, fallbackStem: string): string {
   return stem.endsWith(".mjs") ? stem : `${stem}.mjs`;
 }
 
+function normalizeScriptContentForModule(fileName: string, content: string): string {
+  const normalizedFileName = fileName.trim().toLowerCase();
+  const trimmed = content.trim();
+  if (!normalizedFileName.endsWith(".mjs")) {
+    return trimmed;
+  }
+  if (!/\brequire\s*\(/.test(trimmed)) {
+    return trimmed;
+  }
+  if (/createRequire\s*\(/.test(trimmed) || /\bconst\s+require\s*=/.test(trimmed)) {
+    return trimmed;
+  }
+  const shim = [
+    "import { createRequire } from \"node:module\";",
+    "const require = createRequire(import.meta.url);",
+    "",
+  ].join("\n");
+  return `${shim}${trimmed}`;
+}
+
 function sanitizeToken(input: string, fallbackPrefix: string): string {
   const safe = input.trim().replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
   return safe || `${fallbackPrefix}-${randomUUID().slice(0, 8)}`;
@@ -500,6 +520,7 @@ function buildGenerationPrompt(goal: string, messages: TriggerChatMessage[]): st
     "Otherwise choose script_poll (Node script) or agent_poll (OpenClaw check).",
     "When source analysis requires viewing websites, prioritize browser-based inspection from OpenClaw full profile before plain web fetch.",
     "For script_poll: no dependencies, use global fetch only, print exactly one JSON line.",
+    "Script files are ESM (.mjs): use import syntax; do not use bare require(...).",
     "For script_poll triggered=true responses: include payload object with business/event data, not just reason.",
     "If source provides message/task data (Telegram, webhook body, GitHub event), pass it inside payload fields.",
     "For Telegram triggers include at least payload.chatId and payload.text when available.",
@@ -1128,7 +1149,10 @@ export class TriggerService {
     const timeoutSeconds = Math.max(5, Math.floor(asNumber(configRaw.timeoutSeconds) ?? 30));
     const coolDownSeconds = Math.max(5, Math.floor(asNumber(configRaw.coolDownSeconds) ?? 60));
     const scriptFileName = sanitizeFileName(asString(configRaw.scriptFileName), `${input.nodeId}-trigger`);
-    const scriptContent = asString(configRaw.scriptContent).trim();
+    const scriptContent = normalizeScriptContentForModule(
+      scriptFileName,
+      asString(configRaw.scriptContent),
+    );
     if (!scriptContent) {
       return {
         status: "needs_input",
@@ -2010,8 +2034,10 @@ export class TriggerService {
     const nodeDir = sanitizeFileName(nodeId, "trigger-node");
     const targetDir = path.join(workspacePath, ".kovalsky", "triggers", nodeDir);
     fs.mkdirSync(targetDir, { recursive: true });
-    const targetPath = path.join(targetDir, sanitizeFileName(fileName, nodeId));
-    fs.writeFileSync(targetPath, `${content.trim()}\n`, "utf8");
+    const safeFileName = sanitizeFileName(fileName, nodeId);
+    const targetPath = path.join(targetDir, safeFileName);
+    const normalizedContent = normalizeScriptContentForModule(safeFileName, content);
+    fs.writeFileSync(targetPath, `${normalizedContent}\n`, "utf8");
     return targetPath;
   }
 
@@ -2056,7 +2082,8 @@ export class TriggerService {
     }
 
     if (type === "script_poll") {
-      const scriptContent = asString(value.scriptContent).trim();
+      const scriptFileName = sanitizeFileName(asString(value.scriptFileName), "trigger");
+      const scriptContent = normalizeScriptContentForModule(scriptFileName, asString(value.scriptContent));
       if (!scriptContent) {
         return undefined;
       }
@@ -2065,7 +2092,7 @@ export class TriggerService {
         intervalSeconds: Math.max(3, Math.floor(asNumber(value.intervalSeconds) ?? 60)),
         timeoutSeconds: Math.max(5, Math.floor(asNumber(value.timeoutSeconds) ?? 30)),
         coolDownSeconds: Math.max(5, Math.floor(asNumber(value.coolDownSeconds) ?? 60)),
-        scriptFileName: sanitizeFileName(asString(value.scriptFileName), "trigger"),
+        scriptFileName,
         scriptContent,
         scriptPath: asString(value.scriptPath).trim() || undefined,
       };
