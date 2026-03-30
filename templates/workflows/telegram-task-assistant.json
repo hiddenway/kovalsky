@@ -1,0 +1,133 @@
+{
+  "id": "pipe-9d5a1e8b-4f2b-4d95-a2b9-6d0f68f22f3a",
+  "name": "Telegram Task Assistant",
+  "description": "One-message automation: Telegram trigger starts a multi-agent process that executes a task, formats result, and replies back to the same chat.",
+  "tags": [
+    "telegram",
+    "trigger",
+    "automation",
+    "ops",
+    "demo"
+  ],
+  "workspacePath": "~/projects/telegram-task-assistant-demo",
+  "chatRerunMode": "node",
+  "clearNodeChatContextOnRun": false,
+  "nodes": [
+    {
+      "id": "node-8f4c6d8c-d68b-44a7-b7fd-f2f6a8d8373d",
+      "type": "agentNode",
+      "position": {
+        "x": 120,
+        "y": 120
+      },
+      "data": {
+        "agentId": "trigger",
+        "customName": "Telegram Trigger",
+        "goal": "Watch incoming Telegram Bot messages and start this workflow when a new private text task arrives. Pass trigger runtime payload downstream."
+      },
+      "width": 340,
+      "height": 250,
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "node-3eb9cda2-df9e-4d69-a4e3-44e946364db8",
+      "type": "agentNode",
+      "position": {
+        "x": 500,
+        "y": 90
+      },
+      "data": {
+        "agentId": "openclaw",
+        "customName": "Task Executor (OpenClaw)",
+        "goal": "Execute the user task from trigger payload end-to-end.\n\nRead Trigger runtime input JSON from KOVALSKY_TRIGGER_INPUT_JSON.\nExtract task text from first non-empty field:\n- payload.message.text\n- payload.update.message.text\n- payload.text\n- payload.reason\n\nExecution rules:\n- start immediately, no extra confirmations if task is clear\n- use browser/tools when needed\n- save any created artifacts in ./task-output\n\nOutput:\n- save report to ./task-output/execution_result.md with:\n  - received task\n  - actions performed\n  - key outputs (files/links)\n  - final status"
+      },
+      "width": 360,
+      "height": 430,
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "node-4b443145-5ac0-4206-b8a3-6b41f2ec5157",
+      "type": "agentNode",
+      "position": {
+        "x": 930,
+        "y": 80
+      },
+      "data": {
+        "agentId": "codex-cli",
+        "customName": "Result Formatter (Codex)",
+        "goal": "Convert execution output into a clean user-facing reply package.\n\nInputs:\n- ./task-output/execution_result.md\n- files in ./task-output created by previous step\n\nOutput:\n- save JSON to ./task-output/reply_payload.json with:\n  {\n    \"summary\": \"...\",\n    \"details_markdown\": \"...\",\n    \"artifacts\": [{\"path\":\"...\",\"note\":\"...\"}],\n    \"status\": \"success|partial|failed\"\n  }\n- save final reply text to ./task-output/reply_message.md"
+      },
+      "width": 360,
+      "height": 400,
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "node-745ae43f-fdfd-4495-95a8-5305ee80df12",
+      "type": "agentNode",
+      "position": {
+        "x": 1360,
+        "y": 100
+      },
+      "data": {
+        "agentId": "openclaw",
+        "customName": "Telegram Responder (OpenClaw)",
+        "goal": "Send the prepared reply back to the same Telegram chat that triggered this run.\n\nInputs:\n- ./task-output/reply_message.md\n- ./task-output/reply_payload.json\n- Trigger runtime input JSON (KOVALSKY_TRIGGER_INPUT_JSON)\n\nFind chat id from first non-empty field:\n- payload.message.chat.id\n- payload.update.message.chat.id\n- payload.chat_id\n\nSend ./task-output/reply_message.md to that chat via Telegram integration configured in gateway.\n\nOutput:\n- save delivery log to ./task-output/delivery_status.md with chat_id, send status, and any error details."
+      },
+      "width": 360,
+      "height": 420,
+      "selected": false,
+      "dragging": false
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge-3e084a7f-f3ca-4f44-a53b-86f648f07cd5",
+      "source": "node-8f4c6d8c-d68b-44a7-b7fd-f2f6a8d8373d",
+      "target": "node-3eb9cda2-df9e-4d69-a4e3-44e946364db8",
+      "markerEnd": {
+        "type": "arrowclosed",
+        "width": 20,
+        "height": 20,
+        "color": "#71717a"
+      },
+      "style": {
+        "strokeWidth": 3,
+        "stroke": "#71717a"
+      }
+    },
+    {
+      "id": "edge-0fc0996f-6f1b-4708-b102-0880a708de5b",
+      "source": "node-3eb9cda2-df9e-4d69-a4e3-44e946364db8",
+      "target": "node-4b443145-5ac0-4206-b8a3-6b41f2ec5157",
+      "markerEnd": {
+        "type": "arrowclosed",
+        "width": 20,
+        "height": 20,
+        "color": "#71717a"
+      },
+      "style": {
+        "strokeWidth": 3,
+        "stroke": "#71717a"
+      }
+    },
+    {
+      "id": "edge-f004f9d8-b787-4418-a7cf-cf59a241aa01",
+      "source": "node-4b443145-5ac0-4206-b8a3-6b41f2ec5157",
+      "target": "node-745ae43f-fdfd-4495-95a8-5305ee80df12",
+      "markerEnd": {
+        "type": "arrowclosed",
+        "width": 20,
+        "height": 20,
+        "color": "#71717a"
+      },
+      "style": {
+        "strokeWidth": 3,
+        "stroke": "#71717a"
+      }
+    }
+  ],
+  "updatedAt": "2026-03-30T04:58:00.000Z"
+}
