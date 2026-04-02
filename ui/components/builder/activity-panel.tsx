@@ -178,7 +178,7 @@ export function ActivityPanel({ record, onOpenInspector, isInspectorOpen = false
   const items = useMemo(() => (record ? buildActivityItems(record) : []), [record]);
 
   return (
-    <aside className="flex h-full min-h-0 flex-col rounded-xl border border-zinc-800 bg-zinc-950/95 p-3 shadow-2xl backdrop-blur-sm">
+    <aside className="flex h-full min-h-0 flex-col border border-zinc-800 bg-zinc-950/95 p-3 shadow-2xl backdrop-blur-sm">
       <div className="flex items-center justify-between gap-2">
         <div>
           <p className="text-[11px] uppercase tracking-[0.14em] text-zinc-400">Activity</p>
@@ -197,12 +197,12 @@ export function ActivityPanel({ record, onOpenInspector, isInspectorOpen = false
         </span>
       </div>
 
-      <div className="mt-3 flex items-center justify-between gap-2">
-        <div className="flex flex-wrap gap-2">
+      <div className="mt-3 flex items-center justify-between gap-2 overflow-x-auto pb-1">
+        <div className="flex shrink-0 flex-nowrap gap-2">
           {record ? (
             <Link
               href={`/runs/${record.run.id}`}
-              className="rounded-md border border-cyan-400/50 bg-cyan-500/20 px-3 py-1.5 text-xs text-cyan-100 hover:bg-cyan-500/30"
+              className="whitespace-nowrap rounded-md border border-cyan-400/50 bg-cyan-500/20 px-3 py-1.5 text-xs text-cyan-100 hover:bg-cyan-500/30"
             >
               Open Run
             </Link>
@@ -210,7 +210,7 @@ export function ActivityPanel({ record, onOpenInspector, isInspectorOpen = false
           <Button
             type="button"
             variant="secondary"
-            className="px-3 py-1.5 text-xs"
+            className="whitespace-nowrap px-3 py-1.5 text-xs"
             disabled={!record}
             onClick={() => {
               if (!record) {
@@ -227,7 +227,7 @@ export function ActivityPanel({ record, onOpenInspector, isInspectorOpen = false
           <Button
             type="button"
             variant={isInspectorOpen ? "default" : "secondary"}
-            className="px-3 py-1.5 text-xs"
+            className="shrink-0 whitespace-nowrap px-3 py-1.5 text-xs"
             onClick={onOpenInspector}
           >
             {isInspectorOpen ? "Inspector Open" : "Open Inspector"}

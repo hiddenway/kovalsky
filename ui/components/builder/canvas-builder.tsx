@@ -222,7 +222,7 @@ function CanvasBuilderInner(): React.JSX.Element {
   const [agents, setAgents] = useState<AgentDefinition[]>([]);
   const [instance, setInstance] = useState<ReactFlowInstance | null>(null);
   const [leftPanelWidth, setLeftPanelWidth] = useState(260);
-  const [rightPanelWidth, setRightPanelWidth] = useState(320);
+  const [rightPanelWidth, setRightPanelWidth] = useState(420);
   const [isActivityInspectorOpen, setIsActivityInspectorOpen] = useState(false);
   const [handoffNodeId, setHandoffNodeId] = useState<string | null>(null);
   const [dragState, setDragState] = useState<{
@@ -461,7 +461,7 @@ function CanvasBuilderInner(): React.JSX.Element {
       }
 
       if (dragState.type === "right") {
-        const next = Math.min(620, Math.max(240, dragState.rightWidth - deltaX));
+        const next = Math.min(620, Math.max(360, dragState.rightWidth - deltaX));
         setRightPanelWidth(next);
       }
     };
