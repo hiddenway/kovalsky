@@ -8,7 +8,8 @@ import type { RunRecord, StepRun } from "@/lib/types";
 type Props = {
   record: RunRecord | null;
   onOpenInspector?: () => void;
-  isInspectorOpen?: boolean;
+  onOpenChat?: () => void;
+  activeSection?: "inspector" | "chat" | null;
 };
 
 type ActivityItem = {
@@ -157,24 +158,12 @@ function buildActivityItems(record: RunRecord): ActivityItem[] {
     .sort((left, right) => toEpoch(right.timestamp) - toEpoch(left.timestamp));
 }
 
-function exportActivity(record: RunRecord, items: ActivityItem[]): void {
-  const payload = {
-    runId: record.run.id,
-    pipelineId: record.run.pipelineId,
-    pipelineName: record.pipelineSnapshot.name,
-    exportedAt: new Date().toISOString(),
-    items,
-  };
-  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = `activity-${record.run.id}.json`;
-  anchor.click();
-  URL.revokeObjectURL(url);
-}
-
-export function ActivityPanel({ record, onOpenInspector, isInspectorOpen = false }: Props): React.JSX.Element {
+export function ActivityPanel({
+  record,
+  onOpenInspector,
+  onOpenChat,
+  activeSection = null,
+}: Props): React.JSX.Element {
   const items = useMemo(() => (record ? buildActivityItems(record) : []), [record]);
 
   return (
@@ -207,32 +196,27 @@ export function ActivityPanel({ record, onOpenInspector, isInspectorOpen = false
               Open Run
             </Link>
           ) : null}
-          <Button
-            type="button"
-            variant="secondary"
-            className="whitespace-nowrap px-3 py-1.5 text-xs"
-            disabled={!record}
-            onClick={() => {
-              if (!record) {
-                return;
-              }
-              exportActivity(record, items);
-            }}
-          >
-            Export JSON
-          </Button>
+          {onOpenInspector ? (
+            <Button
+              type="button"
+              variant={activeSection === "inspector" ? "default" : "secondary"}
+              className="shrink-0 whitespace-nowrap px-3 py-1.5 text-xs"
+              onClick={onOpenInspector}
+            >
+              Inspector
+            </Button>
+          ) : null}
+          {onOpenChat ? (
+            <Button
+              type="button"
+              variant={activeSection === "chat" ? "default" : "secondary"}
+              className="shrink-0 whitespace-nowrap px-3 py-1.5 text-xs"
+              onClick={onOpenChat}
+            >
+              Chat with Agent
+            </Button>
+          ) : null}
         </div>
-
-        {onOpenInspector ? (
-          <Button
-            type="button"
-            variant={isInspectorOpen ? "default" : "secondary"}
-            className="shrink-0 whitespace-nowrap px-3 py-1.5 text-xs"
-            onClick={onOpenInspector}
-          >
-            {isInspectorOpen ? "Inspector Open" : "Open Inspector"}
-          </Button>
-        ) : null}
       </div>
 
       {!record ? (

@@ -223,7 +223,7 @@ function CanvasBuilderInner(): React.JSX.Element {
   const [instance, setInstance] = useState<ReactFlowInstance | null>(null);
   const [leftPanelWidth, setLeftPanelWidth] = useState(260);
   const [rightPanelWidth, setRightPanelWidth] = useState(420);
-  const [isActivityInspectorOpen, setIsActivityInspectorOpen] = useState(false);
+  const [activityView, setActivityView] = useState<"inspector" | "chat" | null>(null);
   const [handoffNodeId, setHandoffNodeId] = useState<string | null>(null);
   const [dragState, setDragState] = useState<{
     type: "left" | "right";
@@ -375,6 +375,40 @@ function CanvasBuilderInner(): React.JSX.Element {
   const selectedEdge = useMemo(
     () => edges.find((edge) => edge.id === selectedEdgeId) ?? null,
     [edges, selectedEdgeId],
+  );
+  const openActivitySection = useCallback(
+    (section: "inspector" | "chat") => {
+      const selectedExists = selectedNodeId && nodes.some((node) => node.id === selectedNodeId)
+        ? selectedNodeId
+        : null;
+      const fallbackNodeId = latestRun?.steps
+        .slice()
+        .sort((left, right) => {
+          const leftAt = left.finishedAt ?? left.startedAt ?? latestRun.run.startedAt;
+          const rightAt = right.finishedAt ?? right.startedAt ?? latestRun.run.startedAt;
+          if (leftAt === rightAt) {
+            return left.stepId.localeCompare(right.stepId);
+          }
+          return rightAt.localeCompare(leftAt);
+        })[0]?.stepId
+        ?? nodes[0]?.id
+        ?? null;
+
+      const nodeId = selectedExists ?? fallbackNodeId;
+      if (nodeId) {
+        setSelection({ nodeId, edgeId: null });
+        if (section === "chat") {
+          setHandoffNodeId(nodeId);
+        } else {
+          setHandoffNodeId(null);
+        }
+      } else if (section !== "chat") {
+        setHandoffNodeId(null);
+      }
+
+      setActivityView(section);
+    },
+    [latestRun, nodes, selectedNodeId, setSelection],
   );
   const activeEdgeIds = useMemo(() => {
     if (!latestRun || latestRun.run.status !== "running") {
@@ -919,18 +953,24 @@ function CanvasBuilderInner(): React.JSX.Element {
         <div className="relative h-full min-h-0 border-l border-zinc-800 bg-zinc-950/70">
           <ActivityPanel
             record={latestRun}
-            onOpenInspector={() => setIsActivityInspectorOpen(true)}
-            isInspectorOpen={isActivityInspectorOpen}
+            onOpenInspector={() => openActivitySection("inspector")}
+            onOpenChat={() => openActivitySection("chat")}
+            activeSection={activityView}
           />
 
-          {isActivityInspectorOpen ? (
+          {activityView ? (
             <div className="absolute inset-0 z-30 flex min-h-0 flex-col bg-zinc-950/95">
               <div className="flex items-center justify-between border-b border-zinc-800 px-3 py-2">
-                <p className="text-xs font-semibold uppercase tracking-wide text-zinc-300">Inspector</p>
+                <p className="text-xs font-semibold uppercase tracking-wide text-zinc-300">
+                  {activityView === "chat" ? "Chat" : "Inspector"}
+                </p>
                 <button
                   type="button"
                   className="rounded-md border border-zinc-700 bg-zinc-900 px-2.5 py-1 text-xs text-zinc-200 hover:bg-zinc-800"
-                  onClick={() => setIsActivityInspectorOpen(false)}
+                  onClick={() => {
+                    setActivityView(null);
+                    setHandoffNodeId(null);
+                  }}
                 >
                   Close
                 </button>
