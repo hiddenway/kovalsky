@@ -58,6 +58,12 @@ interface FollowupReplyResult {
 const DEFAULT_OPENCLAW_GATEWAY_PORT = 47289;
 const OPENCLAW_GATEWAY_ENSURE_INTERVAL_MS = 15_000;
 const OPENCLAW_GATEWAY_COMMAND_TIMEOUT_MS = 20_000;
+type OpenClawGatewayCommandResult = {
+  ok: boolean;
+  statusCode: number | null;
+  output: string;
+  error: string | null;
+};
 
 export class RunService {
   private readonly controls = new Map<string, ActiveRunControl>();
@@ -1826,7 +1832,8 @@ export class RunService {
     const desiredPort = this.resolveDesiredOpenClawGatewayPort(stateDir);
     const statusBefore = this.runOpenClawGatewayCommand(invocation, ["gateway", "status", "--json"], env, stateDir);
     const beforeHealthy = this.isOpenClawGatewayHealthy(statusBefore.output, desiredPort);
-    if (statusBefore.ok && beforeHealthy) {
+    const browserBefore = this.runOpenClawGatewayCommand(invocation, ["browser", "status", "--json"], env, stateDir);
+    if (statusBefore.ok && beforeHealthy && browserBefore.ok) {
       return;
     }
 
@@ -1834,26 +1841,65 @@ export class RunService {
       openClawStateDir: stateDir,
       desiredPort,
       statusCode: statusBefore.statusCode,
-    }, "openclaw gateway is not ready, attempting bootstrap");
+      browserStatusCode: browserBefore.statusCode,
+    }, "openclaw gateway/browser control is not ready, attempting bootstrap");
 
-    const install = this.runOpenClawGatewayCommand(
+    let statusAfter = statusBefore;
+    if (!statusBefore.ok || !beforeHealthy) {
+      const install = this.runOpenClawGatewayCommand(
+        invocation,
+        ["gateway", "install", "--force", "--runtime", "node", "--port", String(desiredPort)],
+        env,
+        stateDir,
+      );
+      if (!install.ok) {
+        throw new Error(this.formatGatewayCommandFailure("install", install));
+      }
+
+      const start = this.runOpenClawGatewayCommand(invocation, ["gateway", "start"], env, stateDir);
+      if (!start.ok) {
+        throw new Error(this.formatGatewayCommandFailure("start", start));
+      }
+
+      statusAfter = this.runOpenClawGatewayCommand(invocation, ["gateway", "status", "--json"], env, stateDir);
+      if (!statusAfter.ok || !this.isOpenClawGatewayHealthy(statusAfter.output, desiredPort)) {
+        throw new Error(this.formatGatewayCommandFailure("status", statusAfter));
+      }
+    }
+
+    const browserAfterGateway = this.runOpenClawGatewayCommand(invocation, ["browser", "status", "--json"], env, stateDir);
+    if (browserAfterGateway.ok) {
+      return;
+    }
+
+    const restart = this.runOpenClawGatewayCommand(invocation, ["gateway", "restart"], env, stateDir);
+    if (!restart.ok) {
+      throw new Error(this.formatGatewayCommandFailure("restart", restart));
+    }
+
+    const statusAfterRestart = this.runOpenClawGatewayCommand(invocation, ["gateway", "status", "--json"], env, stateDir);
+    if (!statusAfterRestart.ok || !this.isOpenClawGatewayHealthy(statusAfterRestart.output, desiredPort)) {
+      throw new Error(this.formatGatewayCommandFailure("status", statusAfterRestart));
+    }
+
+    const browserAfterRestart = this.runOpenClawGatewayCommand(invocation, ["browser", "status", "--json"], env, stateDir);
+    if (browserAfterRestart.ok) {
+      return;
+    }
+
+    const browserStart = this.runOpenClawGatewayCommand(
       invocation,
-      ["gateway", "install", "--force", "--runtime", "node"],
+      ["browser", "start", "--browser-profile", this.resolveDefaultOpenClawBrowserProfile()],
       env,
       stateDir,
     );
-    if (!install.ok) {
-      throw new Error(this.formatGatewayCommandFailure("install", install));
+    if (!browserStart.ok) {
+      throw new Error(this.formatGatewayCommandFailure("browser_start", browserStart));
     }
 
-    const start = this.runOpenClawGatewayCommand(invocation, ["gateway", "start"], env, stateDir);
-    if (!start.ok) {
-      throw new Error(this.formatGatewayCommandFailure("start", start));
-    }
-
-    const statusAfter = this.runOpenClawGatewayCommand(invocation, ["gateway", "status", "--json"], env, stateDir);
-    if (!statusAfter.ok || !this.isOpenClawGatewayHealthy(statusAfter.output, desiredPort)) {
-      throw new Error(this.formatGatewayCommandFailure("status", statusAfter));
+    const browserAfterStart = this.runOpenClawGatewayCommand(invocation, ["browser", "status", "--json"], env, stateDir);
+    if (!browserAfterStart.ok) {
+      throw new Error(this.formatGatewayCommandFailure("browser_status", browserAfterStart));
     }
   }
 
@@ -1862,12 +1908,7 @@ export class RunService {
     args: string[],
     env: NodeJS.ProcessEnv,
     stateDir: string,
-  ): {
-    ok: boolean;
-    statusCode: number | null;
-    output: string;
-    error: string | null;
-  } {
+  ): OpenClawGatewayCommandResult {
     const result = spawnSync(invocation.command, [...invocation.args, ...args], {
       cwd: os.homedir(),
       env: {
@@ -1953,8 +1994,8 @@ export class RunService {
   }
 
   private formatGatewayCommandFailure(
-    operation: "install" | "start" | "status",
-    result: { statusCode: number | null; output: string; error: string | null },
+    operation: "install" | "start" | "status" | "restart" | "browser_status" | "browser_start",
+    result: OpenClawGatewayCommandResult,
   ): string {
     const output = result.output.trim();
     const summary = output

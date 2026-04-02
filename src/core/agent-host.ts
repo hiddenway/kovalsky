@@ -311,9 +311,10 @@ function resolveCompatibleNodeForOpenclaw(minVersion: string, preferredDir: stri
   const candidates = [
     (process.env.KOVALSKY_OPENCLAW_NODE_PATH ?? "").trim(),
     (process.env.KOVALSKY_NODE_PATH ?? "").trim(),
+    process.execPath,
     path.join(preferredDir, binaryName),
-    "node",
     ...collectNvmNodeCandidates(),
+    "node",
   ].filter(Boolean);
 
   const seen = new Set<string>();
@@ -342,10 +343,6 @@ export function maybeWrapOpenclawWithCompatibleNode(command: string, args: strin
 
   const requiredNodeVersion = readRequiredNodeVersionForOpenclaw(resolved.entrypoint);
   if (!requiredNodeVersion) {
-    return { command, args };
-  }
-
-  if (isSemverAtLeast(process.versions.node, requiredNodeVersion)) {
     return { command, args };
   }
 
