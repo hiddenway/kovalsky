@@ -223,7 +223,7 @@ function CanvasBuilderInner(): React.JSX.Element {
   const [instance, setInstance] = useState<ReactFlowInstance | null>(null);
   const [leftPanelWidth, setLeftPanelWidth] = useState(260);
   const [rightPanelWidth, setRightPanelWidth] = useState(320);
-  const [showActivityPanel, setShowActivityPanel] = useState(true);
+  const [isActivityInspectorOpen, setIsActivityInspectorOpen] = useState(false);
   const [handoffNodeId, setHandoffNodeId] = useState<string | null>(null);
   const [dragState, setDragState] = useState<{
     type: "left" | "right";
@@ -862,7 +862,7 @@ function CanvasBuilderInner(): React.JSX.Element {
           }
         />
 
-        <div className="relative h-full min-h-0" onDrop={handleDrop} onDragOver={(event) => event.preventDefault()}>
+        <div className="h-full min-h-0" onDrop={handleDrop} onDragOver={(event) => event.preventDefault()}>
           <ReactFlow
             nodes={displayNodes}
             edges={displayEdges}
@@ -902,28 +902,6 @@ function CanvasBuilderInner(): React.JSX.Element {
             <MiniMap pannable zoomable className="!bg-zinc-900" />
             <Controls className="!border-zinc-700 !bg-zinc-900" />
           </ReactFlow>
-
-          <div className="pointer-events-none absolute right-3 top-3 z-20 flex gap-2">
-            <button
-              type="button"
-              className={`pointer-events-auto rounded-md border px-3 py-1.5 text-xs font-medium transition ${
-                showActivityPanel
-                  ? "border-cyan-400/60 bg-cyan-500/20 text-cyan-100 hover:bg-cyan-500/30"
-                  : "border-zinc-700 bg-zinc-900/90 text-zinc-200 hover:bg-zinc-800"
-              }`}
-              onClick={() => setShowActivityPanel((current) => !current)}
-            >
-              {showActivityPanel ? "Hide Activity" : "Show Activity"}
-            </button>
-          </div>
-
-          {showActivityPanel ? (
-            <div className="pointer-events-none absolute inset-y-3 right-3 z-20 w-[360px] max-w-[42vw]">
-              <div className="pointer-events-auto h-full min-h-0">
-                <ActivityPanel record={latestRun} />
-              </div>
-            </div>
-          ) : null}
         </div>
 
         <div
@@ -938,49 +916,74 @@ function CanvasBuilderInner(): React.JSX.Element {
           }
         />
 
-        <InspectorPanel
-          pipelineId={activePipelineId}
-          selectedNode={selectedNode}
-          selectedEdge={selectedEdge}
-          pipeline={{ name, description, tags, workspacePath, chatRerunMode, clearNodeChatContextOnRun }}
-          edgeArtifactTypes={edgeArtifactTypes}
-          activeRunId={latestRun?.run.id ?? null}
-          showHandoff={Boolean(selectedNode && handoffNodeId && selectedNode.id === handoffNodeId)}
-          onCloseHandoff={() => setHandoffNodeId(null)}
-          onNameChange={setSelectedNodeName}
-          onGoalChange={setSelectedNodeGoal}
-          onSettingsChange={setSelectedNodeSettings}
-          onResetNode={() => {
-            setSelectedNodeName("");
-            setSelectedNodeGoal("");
-            setSelectedNodeSettings({});
-          }}
-          onDeleteSelectedEdge={() => {
-            deleteSelectedEdge();
-          }}
-          onBeforeSendChat={async () => {
-            const snapshot = getActivePipelineSnapshot();
-            try {
-              await getApiClient().updatePipeline(snapshot);
-            } catch {
-              // ignore sync errors and let chat call return backend error if any
-            }
-          }}
-          onSavePipeline={handleInspectorSave}
-          onSyncPipeline={async () => {
-            saveActivePipeline();
-            const snapshot = getActivePipelineSnapshot();
-            try {
-              await getApiClient().updatePipeline(snapshot);
-            } catch {
-              await getApiClient().createPipeline(snapshot);
-            }
-          }}
-          onExternalRunStarted={(runId) => {
-            attachExternalRun(runId, getActivePipelineSnapshot());
-          }}
-          onMetadataChange={updateMetadata}
-        />
+        <div className="relative h-full min-h-0 border-l border-zinc-800 bg-zinc-950/70">
+          <ActivityPanel
+            record={latestRun}
+            onOpenInspector={() => setIsActivityInspectorOpen(true)}
+            isInspectorOpen={isActivityInspectorOpen}
+          />
+
+          {isActivityInspectorOpen ? (
+            <div className="absolute inset-0 z-30 flex min-h-0 flex-col bg-zinc-950/95">
+              <div className="flex items-center justify-between border-b border-zinc-800 px-3 py-2">
+                <p className="text-xs font-semibold uppercase tracking-wide text-zinc-300">Inspector</p>
+                <button
+                  type="button"
+                  className="rounded-md border border-zinc-700 bg-zinc-900 px-2.5 py-1 text-xs text-zinc-200 hover:bg-zinc-800"
+                  onClick={() => setIsActivityInspectorOpen(false)}
+                >
+                  Close
+                </button>
+              </div>
+
+              <div className="min-h-0 flex-1">
+                <InspectorPanel
+                  pipelineId={activePipelineId}
+                  selectedNode={selectedNode}
+                  selectedEdge={selectedEdge}
+                  pipeline={{ name, description, tags, workspacePath, chatRerunMode, clearNodeChatContextOnRun }}
+                  edgeArtifactTypes={edgeArtifactTypes}
+                  activeRunId={latestRun?.run.id ?? null}
+                  showHandoff={Boolean(selectedNode && handoffNodeId && selectedNode.id === handoffNodeId)}
+                  onCloseHandoff={() => setHandoffNodeId(null)}
+                  onNameChange={setSelectedNodeName}
+                  onGoalChange={setSelectedNodeGoal}
+                  onSettingsChange={setSelectedNodeSettings}
+                  onResetNode={() => {
+                    setSelectedNodeName("");
+                    setSelectedNodeGoal("");
+                    setSelectedNodeSettings({});
+                  }}
+                  onDeleteSelectedEdge={() => {
+                    deleteSelectedEdge();
+                  }}
+                  onBeforeSendChat={async () => {
+                    const snapshot = getActivePipelineSnapshot();
+                    try {
+                      await getApiClient().updatePipeline(snapshot);
+                    } catch {
+                      // ignore sync errors and let chat call return backend error if any
+                    }
+                  }}
+                  onSavePipeline={handleInspectorSave}
+                  onSyncPipeline={async () => {
+                    saveActivePipeline();
+                    const snapshot = getActivePipelineSnapshot();
+                    try {
+                      await getApiClient().updatePipeline(snapshot);
+                    } catch {
+                      await getApiClient().createPipeline(snapshot);
+                    }
+                  }}
+                  onExternalRunStarted={(runId) => {
+                    attachExternalRun(runId, getActivePipelineSnapshot());
+                  }}
+                  onMetadataChange={updateMetadata}
+                />
+              </div>
+            </div>
+          ) : null}
+        </div>
       </div>
 
       <input

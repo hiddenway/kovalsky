@@ -7,6 +7,8 @@ import type { RunRecord, StepRun } from "@/lib/types";
 
 type Props = {
   record: RunRecord | null;
+  onOpenInspector?: () => void;
+  isInspectorOpen?: boolean;
 };
 
 type ActivityItem = {
@@ -172,7 +174,7 @@ function exportActivity(record: RunRecord, items: ActivityItem[]): void {
   URL.revokeObjectURL(url);
 }
 
-export function ActivityPanel({ record }: Props): React.JSX.Element {
+export function ActivityPanel({ record, onOpenInspector, isInspectorOpen = false }: Props): React.JSX.Element {
   const items = useMemo(() => (record ? buildActivityItems(record) : []), [record]);
 
   return (
@@ -195,29 +197,42 @@ export function ActivityPanel({ record }: Props): React.JSX.Element {
         </span>
       </div>
 
-      <div className="mt-3 flex flex-wrap gap-2">
-        {record ? (
-          <Link
-            href={`/runs/${record.run.id}`}
-            className="rounded-md border border-cyan-400/50 bg-cyan-500/20 px-3 py-1.5 text-xs text-cyan-100 hover:bg-cyan-500/30"
+      <div className="mt-3 flex items-center justify-between gap-2">
+        <div className="flex flex-wrap gap-2">
+          {record ? (
+            <Link
+              href={`/runs/${record.run.id}`}
+              className="rounded-md border border-cyan-400/50 bg-cyan-500/20 px-3 py-1.5 text-xs text-cyan-100 hover:bg-cyan-500/30"
+            >
+              Open Run
+            </Link>
+          ) : null}
+          <Button
+            type="button"
+            variant="secondary"
+            className="px-3 py-1.5 text-xs"
+            disabled={!record}
+            onClick={() => {
+              if (!record) {
+                return;
+              }
+              exportActivity(record, items);
+            }}
           >
-            Open Run
-          </Link>
+            Export JSON
+          </Button>
+        </div>
+
+        {onOpenInspector ? (
+          <Button
+            type="button"
+            variant={isInspectorOpen ? "default" : "secondary"}
+            className="px-3 py-1.5 text-xs"
+            onClick={onOpenInspector}
+          >
+            {isInspectorOpen ? "Inspector Open" : "Open Inspector"}
+          </Button>
         ) : null}
-        <Button
-          type="button"
-          variant="secondary"
-          className="px-3 py-1.5 text-xs"
-          disabled={!record}
-          onClick={() => {
-            if (!record) {
-              return;
-            }
-            exportActivity(record, items);
-          }}
-        >
-          Export JSON
-        </Button>
       </div>
 
       {!record ? (
