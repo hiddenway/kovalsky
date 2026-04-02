@@ -153,9 +153,9 @@ usage() {
 Usage: kovalsky [command]
 
 Commands:
-  start      Start backend + UI dev servers (default)
-  backend    Start backend only
-  ui         Start UI only
+  start      Start backend + UI production servers (default)
+  backend    Start backend only (production)
+  ui         Start UI only (production)
   update     Pull latest code and install dependencies
   path       Print install directory
   help       Show this help
@@ -211,6 +211,20 @@ open_browser_url() {
   return 1
 }
 
+ensure_runtime_build() {
+  local backend_url="$1"
+  local backend_dist="$INSTALL_DIR/dist/index.js"
+  local ui_build_id="$INSTALL_DIR/ui/.next/BUILD_ID"
+
+  if [[ -f "$backend_dist" && -f "$ui_build_id" ]]; then
+    return 0
+  fi
+
+  printf '[kovalsky] Production build missing. Building backend + UI...\n'
+  pnpm run build
+  NEXT_PUBLIC_KOVALSKY_BACKEND_URL="$backend_url" pnpm --dir ui run build
+}
+
 case "$cmd" in
   start)
     cd "$INSTALL_DIR"
@@ -227,7 +241,9 @@ case "$cmd" in
       printf '[kovalsky] Opening browser...\n'
     fi
 
-    KOVALSKY_PORT="$backend_port" KOVALSKY_ALLOWED_ORIGINS="$backend_allowed_origins" pnpm run dev:watch &
+    ensure_runtime_build "$backend_url"
+
+    KOVALSKY_PORT="$backend_port" KOVALSKY_ALLOWED_ORIGINS="$backend_allowed_origins" pnpm run start &
     backend_pid="$!"
     cleanup() {
       kill "$backend_pid" >/dev/null 2>&1 || true
@@ -237,7 +253,7 @@ case "$cmd" in
       sleep 2
       open_browser_url "$ui_open_url" || true
     ) &
-    NEXT_PUBLIC_KOVALSKY_BACKEND_URL="$backend_url" PORT="$ui_port" pnpm --dir ui run dev "$@"
+    HOSTNAME="$UI_HOST" NEXT_PUBLIC_KOVALSKY_BACKEND_URL="$backend_url" PORT="$ui_port" pnpm --dir ui run start "$@"
     ;;
   backend)
     cd "$INSTALL_DIR"
@@ -246,7 +262,8 @@ case "$cmd" in
     ui_url="http://${UI_HOST}:${ui_port}"
     backend_allowed_origins="${KOVALSKY_ALLOWED_ORIGINS:-http://localhost:${ui_port},http://127.0.0.1:${ui_port},${ui_url}}"
     printf '[kovalsky] Backend: http://%s:%s\n' "$BACKEND_HOST" "$backend_port"
-    exec KOVALSKY_PORT="$backend_port" KOVALSKY_ALLOWED_ORIGINS="$backend_allowed_origins" pnpm run dev:watch "$@"
+    ensure_runtime_build "http://${BACKEND_HOST}:${backend_port}"
+    exec KOVALSKY_PORT="$backend_port" KOVALSKY_ALLOWED_ORIGINS="$backend_allowed_origins" pnpm run start "$@"
     ;;
   ui)
     cd "$INSTALL_DIR"
@@ -254,7 +271,8 @@ case "$cmd" in
     ui_port="$(resolve_ui_port)"
     backend_url="http://${BACKEND_HOST}:${backend_port}"
     printf '[kovalsky] UI: http://%s:%s/pipelines\n' "$UI_HOST" "$ui_port"
-    exec NEXT_PUBLIC_KOVALSKY_BACKEND_URL="$backend_url" PORT="$ui_port" pnpm --dir ui run dev "$@"
+    ensure_runtime_build "$backend_url"
+    exec HOSTNAME="$UI_HOST" NEXT_PUBLIC_KOVALSKY_BACKEND_URL="$backend_url" PORT="$ui_port" pnpm --dir ui run start "$@"
     ;;
   update)
     need_cmd git
@@ -263,6 +281,10 @@ case "$cmd" in
     git checkout "$DEFAULT_BRANCH"
     git pull --ff-only origin "$DEFAULT_BRANCH"
     pnpm install
+    backend_port="$(resolve_backend_port)"
+    backend_url="http://${BACKEND_HOST}:${backend_port}"
+    pnpm run build
+    NEXT_PUBLIC_KOVALSKY_BACKEND_URL="$backend_url" pnpm --dir ui run build
     ;;
   path)
     printf '%s\n' "$INSTALL_DIR"
@@ -311,8 +333,11 @@ main() {
   fi
 
   if [[ "$SKIP_BUILD" != "1" ]]; then
-    log "Building backend..."
+    backend_port="${KOVALSKY_BACKEND_PORT:-18787}"
+    backend_url="http://127.0.0.1:${backend_port}"
+    log "Building backend + UI (production)..."
     pnpm run build
+    NEXT_PUBLIC_KOVALSKY_BACKEND_URL="$backend_url" pnpm --dir ui run build
   else
     log "Skipping build (KOVALSKY_SKIP_BUILD=1)."
   fi
