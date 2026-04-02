@@ -13,6 +13,7 @@ import ReactFlow, {
 import "reactflow/dist/style.css";
 import AgentNode from "@/components/builder/agent-node";
 import { AgentsLibrary } from "@/components/builder/agents-library";
+import { ActivityPanel } from "@/components/builder/activity-panel";
 import { InspectorPanel } from "@/components/builder/inspector-panel";
 import { TopBar } from "@/components/builder/top-bar";
 import { getApiClient } from "@/lib/api/client";
@@ -222,6 +223,7 @@ function CanvasBuilderInner(): React.JSX.Element {
   const [instance, setInstance] = useState<ReactFlowInstance | null>(null);
   const [leftPanelWidth, setLeftPanelWidth] = useState(260);
   const [rightPanelWidth, setRightPanelWidth] = useState(320);
+  const [showActivityPanel, setShowActivityPanel] = useState(true);
   const [handoffNodeId, setHandoffNodeId] = useState<string | null>(null);
   const [dragState, setDragState] = useState<{
     type: "left" | "right";
@@ -860,7 +862,7 @@ function CanvasBuilderInner(): React.JSX.Element {
           }
         />
 
-        <div className="min-h-0" onDrop={handleDrop} onDragOver={(event) => event.preventDefault()}>
+        <div className="relative h-full min-h-0" onDrop={handleDrop} onDragOver={(event) => event.preventDefault()}>
           <ReactFlow
             nodes={displayNodes}
             edges={displayEdges}
@@ -900,6 +902,28 @@ function CanvasBuilderInner(): React.JSX.Element {
             <MiniMap pannable zoomable className="!bg-zinc-900" />
             <Controls className="!border-zinc-700 !bg-zinc-900" />
           </ReactFlow>
+
+          <div className="pointer-events-none absolute right-3 top-3 z-20 flex gap-2">
+            <button
+              type="button"
+              className={`pointer-events-auto rounded-md border px-3 py-1.5 text-xs font-medium transition ${
+                showActivityPanel
+                  ? "border-cyan-400/60 bg-cyan-500/20 text-cyan-100 hover:bg-cyan-500/30"
+                  : "border-zinc-700 bg-zinc-900/90 text-zinc-200 hover:bg-zinc-800"
+              }`}
+              onClick={() => setShowActivityPanel((current) => !current)}
+            >
+              {showActivityPanel ? "Hide Activity" : "Show Activity"}
+            </button>
+          </div>
+
+          {showActivityPanel ? (
+            <div className="pointer-events-none absolute inset-y-3 right-3 z-20 w-[360px] max-w-[42vw]">
+              <div className="pointer-events-auto h-full min-h-0">
+                <ActivityPanel record={latestRun} />
+              </div>
+            </div>
+          ) : null}
         </div>
 
         <div
