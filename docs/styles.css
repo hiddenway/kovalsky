@@ -329,6 +329,21 @@ header[id] {
   color: var(--muted);
 }
 
+.demo-video-frame {
+  margin-top: 22px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  overflow: hidden;
+  background: var(--panel-strong);
+  box-shadow: var(--shadow);
+}
+
+.demo-video {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
 .steps {
   margin-top: 22px;
   display: grid;
