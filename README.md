@@ -44,11 +44,9 @@ Kovalsky uses a team model:
 <a id="pipeline-builder-ui"></a>
 ## 🖼️ Pipeline Builder UI
 
-<video src="./docs/video/exm1.mp4" controls muted playsinline preload="metadata" width="100%">
-  Your browser does not support HTML5 video.
-</video>
+[![Pipeline Builder UI demo](./docs/video/exm1.gif)](./docs/video/exm1.mp4)
 
-[Download video](./docs/video/exm1.mp4)
+[Open full video (MP4)](./docs/video/exm1.mp4)
 
 <a id="core-idea"></a>
 ## 🧠 Core Idea
