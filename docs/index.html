@@ -29,7 +29,6 @@
         </a>
         <button class="mobile-toggle" id="mobile-toggle" aria-label="Open menu">☰</button>
         <div class="links" id="nav-links">
-          <a href="#demo">Demo Video</a>
           <a href="#install">Get Started</a>
           <a href="#features">Why Kovalsky</a>
           <a href="#flow">How It Works</a>
@@ -68,28 +67,6 @@
         </div>
       </div>
     </header>
-
-    <section class="section container reveal" id="demo">
-      <div class="section-head">
-        <h2>Pipeline Builder Demo</h2>
-        <p>Live walkthrough of building and running a workflow in Kovalsky.</p>
-      </div>
-      <div class="demo-video-frame">
-        <video
-          class="demo-video"
-          src="./video/exm1.mp4"
-          autoplay
-          loop
-          muted
-          playsinline
-          controls
-          preload="metadata"
-          poster="./images/pipeline-builder.png"
-        >
-          Your browser does not support HTML5 video.
-        </video>
-      </div>
-    </section>
 
     <section class="section container reveal" id="install">
       <div class="section-head">
@@ -153,22 +130,46 @@ Research → Build → Test → Deploy</code></pre>
     <section class="section container reveal" id="flow">
       <div class="section-head">
         <h2>How It Works</h2>
+        <p>A simple 3-step orchestration where specialized agents collaborate and produce the final result.</p>
       </div>
-      <div class="flow">
-        <div class="flow-node">
-          <p class="flow-title">Define Workflow</p>
-          <p>Assign agent roles and execution order</p>
+      <div class="flow-layout">
+        <div class="flow-track">
+          <div class="flow">
+            <div class="flow-node">
+              <p class="flow-title">Define Workflow</p>
+              <p>Assign agent roles and execution order</p>
+            </div>
+            <div class="flow-arrow">→</div>
+            <div class="flow-node">
+              <p class="flow-title">Coordinate Agents</p>
+              <p>Specialized workers collaborate per step</p>
+            </div>
+            <div class="flow-arrow">→</div>
+            <div class="flow-node">
+              <p class="flow-title">Ship Results Faster</p>
+              <p>Track runs, review outputs, iterate quickly</p>
+            </div>
+          </div>
         </div>
-        <div class="flow-arrow">→</div>
-        <div class="flow-node">
-          <p class="flow-title">Coordinate Agents</p>
-          <p>Specialized workers collaborate per step</p>
-        </div>
-        <div class="flow-arrow">→</div>
-        <div class="flow-node">
-          <p class="flow-title">Ship Results Faster</p>
-          <p>Track runs, review outputs, iterate quickly</p>
-        </div>
+        <aside class="flow-demo-card">
+          <div class="flow-demo-head">
+            <span class="flow-demo-dot" aria-hidden="true"></span>
+            <p>Pipeline Builder in action</p>
+          </div>
+          <video
+            class="flow-demo-video"
+            src="./video/exm1.mp4"
+            autoplay
+            loop
+            muted
+            playsinline
+            controls
+            preload="metadata"
+            poster="./images/pipeline-builder.png"
+          >
+            Your browser does not support HTML5 video.
+          </video>
+        </aside>
       </div>
     </section>
 
