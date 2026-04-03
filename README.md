@@ -44,9 +44,7 @@ Kovalsky uses a team model:
 <a id="pipeline-builder-ui"></a>
 ## 🖼️ Pipeline Builder UI
 
-[![Pipeline Builder UI demo](./docs/video/exm1.gif)](./docs/video/exm1.mp4)
-
-[Open full video (MP4)](./docs/video/exm1.mp4)
+![Pipeline Builder UI demo](./docs/video/exm1.gif)
 
 <a id="core-idea"></a>
 ## 🧠 Core Idea
