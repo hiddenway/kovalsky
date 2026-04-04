@@ -88,11 +88,29 @@ function looksLikeAwaitingUserInputText(content: string): boolean {
   return false;
 }
 
-function isAwaitingUserInputFromChat(messages: NodeChatMessage[]): boolean {
+function toEpochMs(value?: string | null): number | null {
+  if (!value) {
+    return null;
+  }
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function isAwaitingUserInputFromChat(
+  messages: NodeChatMessage[],
+  options?: { since?: string | null },
+): boolean {
+  const sinceEpoch = toEpochMs(options?.since);
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index];
     if (message.role !== "agent" || message.phase !== "run") {
       continue;
+    }
+    if (sinceEpoch !== null) {
+      const messageEpoch = toEpochMs(message.created_at);
+      if (messageEpoch === null || messageEpoch < sinceEpoch) {
+        continue;
+      }
     }
 
     const meta = parseMetaJson(message.meta_json);
@@ -201,14 +219,11 @@ async function mapSnapshotToRecord(
       const status = toStepStatus(stepRun.status);
       let awaitingUserInput = false;
       if (status === "pending") {
-        if (previousStep?.awaitingUserInput) {
-          awaitingUserInput = true;
-        } else {
-          awaitingUserInput = await api
-            .getNodeChat(runId, stepId)
-            .then((payload) => isAwaitingUserInputFromChat(payload.messages))
-            .catch(() => false);
-        }
+        const since = stepRun.started_at ?? snapshot.run.started_at ?? null;
+        awaitingUserInput = await api
+          .getNodeChat(runId, stepId)
+          .then((payload) => isAwaitingUserInputFromChat(payload.messages, { since }))
+          .catch(() => previousStep?.awaitingUserInput ?? false);
       }
       return {
         stepId,
