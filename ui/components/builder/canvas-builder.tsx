@@ -305,6 +305,7 @@ function CanvasBuilderInner(): React.JSX.Element {
               onOpenHandoff: () => {
                 setSelection({ nodeId: node.id, edgeId: null });
                 setHandoffNodeId(node.id);
+                setActivityView("chat");
               },
             },
           };
@@ -361,6 +362,7 @@ function CanvasBuilderInner(): React.JSX.Element {
             onOpenHandoff: () => {
               setSelection({ nodeId: node.id, edgeId: null });
               setHandoffNodeId(node.id);
+              setActivityView("chat");
             },
           },
         };
