@@ -1,6 +1,6 @@
 # Kovalsky
 
-> 🚀 Run an AI team with a single prompt.
+> 🚀 Build AI workflows with agent teams.
 
 Kovalsky is an open-source platform for building and running AI employees.  
 Instead of chatting with one generic assistant, you coordinate a team of specialized agents through workflows.
