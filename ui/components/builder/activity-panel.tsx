@@ -8,8 +8,7 @@ import type { RunRecord, StepRun } from "@/lib/types";
 type Props = {
   record: RunRecord | null;
   onOpenInspector?: () => void;
-  onOpenChat?: () => void;
-  activeSection?: "inspector" | "chat" | null;
+  activeSection?: "inspector" | null;
 };
 
 type ActivityItem = {
@@ -161,7 +160,6 @@ function buildActivityItems(record: RunRecord): ActivityItem[] {
 export function ActivityPanel({
   record,
   onOpenInspector,
-  onOpenChat,
   activeSection = null,
 }: Props): React.JSX.Element {
   const items = useMemo(() => (record ? buildActivityItems(record) : []), [record]);
@@ -204,16 +202,6 @@ export function ActivityPanel({
               onClick={onOpenInspector}
             >
               Inspector
-            </Button>
-          ) : null}
-          {onOpenChat ? (
-            <Button
-              type="button"
-              variant={activeSection === "chat" ? "default" : "secondary"}
-              className="shrink-0 whitespace-nowrap px-3 py-1.5 text-xs"
-              onClick={onOpenChat}
-            >
-              Chat with Agent
             </Button>
           ) : null}
         </div>
