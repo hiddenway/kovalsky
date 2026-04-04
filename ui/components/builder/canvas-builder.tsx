@@ -224,6 +224,7 @@ function CanvasBuilderInner(): React.JSX.Element {
   const [leftPanelWidth, setLeftPanelWidth] = useState(260);
   const [rightPanelWidth, setRightPanelWidth] = useState(420);
   const [handoffNodeId, setHandoffNodeId] = useState<string | null>(null);
+  const [workflowInspectorOpen, setWorkflowInspectorOpen] = useState(false);
   const [dragState, setDragState] = useState<{
     type: "left" | "right";
     startX: number;
@@ -376,29 +377,10 @@ function CanvasBuilderInner(): React.JSX.Element {
     [edges, selectedEdgeId],
   );
   const openInspectorFromActivity = useCallback(() => {
-    const selectedExists = selectedNodeId && nodes.some((node) => node.id === selectedNodeId)
-      ? selectedNodeId
-      : null;
-    const fallbackNodeId = latestRun?.steps
-      .slice()
-      .sort((left, right) => {
-        const leftAt = left.finishedAt ?? left.startedAt ?? latestRun.run.startedAt;
-        const rightAt = right.finishedAt ?? right.startedAt ?? latestRun.run.startedAt;
-        if (leftAt === rightAt) {
-          return left.stepId.localeCompare(right.stepId);
-        }
-        return rightAt.localeCompare(leftAt);
-      })[0]?.stepId
-      ?? nodes[0]?.id
-      ?? null;
-
-    const nodeId = selectedExists ?? fallbackNodeId;
-    if (!nodeId) {
-      return;
-    }
-    setSelection({ nodeId, edgeId: null });
+    setSelection({ nodeId: null, edgeId: null });
     setHandoffNodeId(null);
-  }, [latestRun, nodes, selectedNodeId, setSelection]);
+    setWorkflowInspectorOpen(true);
+  }, [setSelection]);
   const activeEdgeIds = useMemo(() => {
     if (!latestRun || latestRun.run.status !== "running") {
       return new Set<string>();
@@ -896,14 +878,17 @@ function CanvasBuilderInner(): React.JSX.Element {
             onPaneClick={() => {
               setSelection({ nodeId: null, edgeId: null });
               setHandoffNodeId(null);
+              setWorkflowInspectorOpen(false);
             }}
             onNodeClick={(_, node) => {
               setSelection({ nodeId: node.id, edgeId: null });
               setHandoffNodeId(null);
+              setWorkflowInspectorOpen(false);
             }}
             onEdgeClick={(_, edge) => {
               setSelection({ nodeId: null, edgeId: edge.id });
               setHandoffNodeId(null);
+              setWorkflowInspectorOpen(false);
             }}
             onSelectionChange={(selection) => {
               const nodeId = selection.nodes.length === 1 ? selection.nodes[0].id : null;
@@ -911,6 +896,9 @@ function CanvasBuilderInner(): React.JSX.Element {
               setSelection({ nodeId, edgeId });
               if (nodeId !== handoffNodeId) {
                 setHandoffNodeId(null);
+              }
+              if (nodeId || edgeId) {
+                setWorkflowInspectorOpen(false);
               }
             }}
             nodeTypes={NODE_TYPES}
@@ -940,7 +928,7 @@ function CanvasBuilderInner(): React.JSX.Element {
         />
 
         <div className="relative h-full min-h-0 border-l border-zinc-800 bg-zinc-950/70">
-          {selectedNode || selectedEdge ? (
+          {selectedNode || selectedEdge || workflowInspectorOpen ? (
             <InspectorPanel
               pipelineId={activePipelineId}
               selectedNode={selectedNode}
@@ -988,7 +976,7 @@ function CanvasBuilderInner(): React.JSX.Element {
             <ActivityPanel
               record={latestRun}
               onOpenInspector={openInspectorFromActivity}
-              activeSection={null}
+              activeSection={workflowInspectorOpen ? "inspector" : null}
             />
           )}
         </div>
