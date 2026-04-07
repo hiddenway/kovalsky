@@ -58,6 +58,10 @@ interface FollowupReplyResult {
 const DEFAULT_OPENCLAW_GATEWAY_PORT = 47289;
 const OPENCLAW_GATEWAY_ENSURE_INTERVAL_MS = 15_000;
 const OPENCLAW_GATEWAY_COMMAND_TIMEOUT_MS = 20_000;
+const OPENCLAW_GATEWAY_READY_RETRIES = 10;
+const OPENCLAW_GATEWAY_READY_RETRY_DELAY_MS = 800;
+const OPENCLAW_BROWSER_READY_RETRIES = 8;
+const OPENCLAW_BROWSER_READY_RETRY_DELAY_MS = 800;
 type OpenClawGatewayCommandResult = {
   ok: boolean;
   statusCode: number | null;
@@ -1861,13 +1865,22 @@ export class RunService {
         throw new Error(this.formatGatewayCommandFailure("start", start));
       }
 
-      statusAfter = this.runOpenClawGatewayCommand(invocation, ["gateway", "status", "--json"], env, stateDir);
+      statusAfter = await this.waitForOpenClawGatewayHealthy({
+        invocation,
+        env,
+        stateDir,
+        desiredPort,
+      });
       if (!statusAfter.ok || !this.isOpenClawGatewayHealthy(statusAfter.output, desiredPort)) {
         throw new Error(this.formatGatewayCommandFailure("status", statusAfter));
       }
     }
 
-    const browserAfterGateway = this.runOpenClawGatewayCommand(invocation, ["browser", "status", "--json"], env, stateDir);
+    const browserAfterGateway = await this.waitForOpenClawBrowserReady({
+      invocation,
+      env,
+      stateDir,
+    });
     if (browserAfterGateway.ok) {
       return;
     }
@@ -1877,12 +1890,21 @@ export class RunService {
       throw new Error(this.formatGatewayCommandFailure("restart", restart));
     }
 
-    const statusAfterRestart = this.runOpenClawGatewayCommand(invocation, ["gateway", "status", "--json"], env, stateDir);
+    const statusAfterRestart = await this.waitForOpenClawGatewayHealthy({
+      invocation,
+      env,
+      stateDir,
+      desiredPort,
+    });
     if (!statusAfterRestart.ok || !this.isOpenClawGatewayHealthy(statusAfterRestart.output, desiredPort)) {
       throw new Error(this.formatGatewayCommandFailure("status", statusAfterRestart));
     }
 
-    const browserAfterRestart = this.runOpenClawGatewayCommand(invocation, ["browser", "status", "--json"], env, stateDir);
+    const browserAfterRestart = await this.waitForOpenClawBrowserReady({
+      invocation,
+      env,
+      stateDir,
+    });
     if (browserAfterRestart.ok) {
       return;
     }
@@ -1897,10 +1919,53 @@ export class RunService {
       throw new Error(this.formatGatewayCommandFailure("browser_start", browserStart));
     }
 
-    const browserAfterStart = this.runOpenClawGatewayCommand(invocation, ["browser", "status", "--json"], env, stateDir);
+    const browserAfterStart = await this.waitForOpenClawBrowserReady({
+      invocation,
+      env,
+      stateDir,
+    });
     if (!browserAfterStart.ok) {
       throw new Error(this.formatGatewayCommandFailure("browser_status", browserAfterStart));
     }
+  }
+
+  private async waitForOpenClawGatewayHealthy(input: {
+    invocation: { command: string; args: string[] };
+    env: NodeJS.ProcessEnv;
+    stateDir: string;
+    desiredPort: number;
+  }): Promise<OpenClawGatewayCommandResult> {
+    let last = this.runOpenClawGatewayCommand(input.invocation, ["gateway", "status", "--json"], input.env, input.stateDir);
+    for (let attempt = 0; attempt < OPENCLAW_GATEWAY_READY_RETRIES; attempt += 1) {
+      if (last.ok && this.isOpenClawGatewayHealthy(last.output, input.desiredPort)) {
+        return last;
+      }
+      await this.sleep(OPENCLAW_GATEWAY_READY_RETRY_DELAY_MS);
+      last = this.runOpenClawGatewayCommand(input.invocation, ["gateway", "status", "--json"], input.env, input.stateDir);
+    }
+    return last;
+  }
+
+  private async waitForOpenClawBrowserReady(input: {
+    invocation: { command: string; args: string[] };
+    env: NodeJS.ProcessEnv;
+    stateDir: string;
+  }): Promise<OpenClawGatewayCommandResult> {
+    let last = this.runOpenClawGatewayCommand(input.invocation, ["browser", "status", "--json"], input.env, input.stateDir);
+    for (let attempt = 0; attempt < OPENCLAW_BROWSER_READY_RETRIES; attempt += 1) {
+      if (last.ok) {
+        return last;
+      }
+      await this.sleep(OPENCLAW_BROWSER_READY_RETRY_DELAY_MS);
+      last = this.runOpenClawGatewayCommand(input.invocation, ["browser", "status", "--json"], input.env, input.stateDir);
+    }
+    return last;
+  }
+
+  private sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => {
+      setTimeout(resolve, ms);
+    });
   }
 
   private runOpenClawGatewayCommand(
