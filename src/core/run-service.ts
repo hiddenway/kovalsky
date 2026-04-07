@@ -478,12 +478,14 @@ export class RunService {
       nodeId: input.nodeId,
       prompt,
     });
-    const shouldLaunchFollowup = followup.decision === "rerun";
+    const actionRequested = this.isImmediateExecutionRequest(prompt);
+    const shouldLaunchFollowup = followup.decision === "rerun" || actionRequested;
+    const effectiveDecision: FollowupRerunDecision = shouldLaunchFollowup ? "rerun" : followup.decision;
     const requestedRerunMode = input.rerunMode === "pipeline" ? "pipeline" : "node";
     const rerunMode = this.isImmediateStopServerRequest(prompt) ? "node" : requestedRerunMode;
     const awaitingUserInput = this.isAwaitingUserInputReply({
       reply: followup.reply,
-      decision: followup.decision,
+      decision: effectiveDecision,
     });
     let nodeRerunLaunch: NodeFollowupRerunLaunch | null = null;
     let startedRunId: string | null = null;
@@ -516,7 +518,7 @@ export class RunService {
       content: followup.reply,
       meta: {
         source: "chat_followup_report",
-        rerunDecision: followup.decision,
+        rerunDecision: effectiveDecision,
         rerunMode,
         awaitingUserInput: awaitingUserInput || undefined,
         startedRunId: startedRunId ?? undefined,
