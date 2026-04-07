@@ -55,6 +55,8 @@ interface FollowupReplyResult {
   decision: FollowupRerunDecision;
 }
 
+type OpenClawBootstrapMode = "blocking" | "background";
+
 const DEFAULT_OPENCLAW_GATEWAY_PORT = 47289;
 const OPENCLAW_GATEWAY_ENSURE_INTERVAL_MS = 15_000;
 const OPENCLAW_GATEWAY_COMMAND_TIMEOUT_MS = 20_000;
@@ -134,7 +136,7 @@ export class RunService {
       this.db.deleteNodeMessagesByPipeline(pipelineId);
     }
 
-    const env = await this.buildAgentEnv(overrides.credentialId);
+    const env = await this.buildAgentEnv(overrides.credentialId, { openClawBootstrapMode: "background" });
     const executionGraph = this.applyPipelineChatContextToGraph(graph, pipelineId);
 
     for (const node of executionGraph.nodes) {
@@ -1565,7 +1567,10 @@ export class RunService {
     }
   }
 
-  private async buildAgentEnv(openaiCredentialId?: string): Promise<NodeJS.ProcessEnv> {
+  private async buildAgentEnv(
+    openaiCredentialId?: string,
+    options?: { openClawBootstrapMode?: OpenClawBootstrapMode },
+  ): Promise<NodeJS.ProcessEnv> {
     const env: NodeJS.ProcessEnv = {
       ...process.env,
     };
@@ -1634,10 +1639,17 @@ export class RunService {
       providerMode: openClawMode,
       customApiBaseUrl: customOpenClawBaseUrl,
     });
-    try {
-      await this.ensureOpenClawGatewayReady(env, openClawStateDir);
-    } catch (error) {
-      this.logger.warn({ err: error, openClawStateDir }, "failed to bootstrap openclaw gateway");
+    const bootstrapMode = options?.openClawBootstrapMode ?? "blocking";
+    if (bootstrapMode === "background") {
+      void this.ensureOpenClawGatewayReady(env, openClawStateDir).catch((error) => {
+        this.logger.warn({ err: error, openClawStateDir }, "failed to bootstrap openclaw gateway");
+      });
+    } else {
+      try {
+        await this.ensureOpenClawGatewayReady(env, openClawStateDir);
+      } catch (error) {
+        this.logger.warn({ err: error, openClawStateDir }, "failed to bootstrap openclaw gateway");
+      }
     }
 
     return env;
