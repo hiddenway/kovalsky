@@ -465,6 +465,7 @@ export class RunService {
     if (!prompt) {
       throw new Error("Chat content is empty");
     }
+    const immediateActionRequested = this.isImmediateExecutionRequest(prompt);
 
     const userMessage = this.createNodeMessage({
       runId: input.runId,
@@ -475,13 +476,19 @@ export class RunService {
       meta: { source: "chat_followup" },
     });
 
-    const followup = await this.generateNodeFollowupReply({
-      runId: input.runId,
-      nodeId: input.nodeId,
-      prompt,
-    });
-    const actionRequested = this.isImmediateExecutionRequest(prompt);
-    const shouldLaunchFollowup = followup.decision === "rerun" || actionRequested;
+    const followup: FollowupReplyResult = immediateActionRequested
+      ? {
+          reply: this.isLikelyRussianText(prompt)
+            ? "Принял. Запускаю выполнение сейчас."
+            : "Understood. Starting execution now.",
+          decision: "rerun",
+        }
+      : await this.generateNodeFollowupReply({
+          runId: input.runId,
+          nodeId: input.nodeId,
+          prompt,
+        });
+    const shouldLaunchFollowup = followup.decision === "rerun" || immediateActionRequested;
     const effectiveDecision: FollowupRerunDecision = shouldLaunchFollowup ? "rerun" : followup.decision;
     const requestedRerunMode = input.rerunMode === "pipeline" ? "pipeline" : "node";
     const rerunMode = this.isImmediateStopServerRequest(prompt) ? "node" : requestedRerunMode;
